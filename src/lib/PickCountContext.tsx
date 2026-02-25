@@ -1,34 +1,38 @@
 'use client';
 
-import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react';
-import { generateOrders } from '@/lib/mock-data';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { getPendingPickCount } from '@/lib/supabase/queries';
 
 interface PickCountContextType {
   pendingPickCount: number;
-  markPicked: (orderId: number) => void;
+  markPicked: (orderId: string) => void;
+  refreshCount: () => void;
 }
 
 const PickCountContext = createContext<PickCountContextType>({
   pendingPickCount: 0,
   markPicked: () => {},
+  refreshCount: () => {},
 });
 
 export function PickCountProvider({ children }: { children: ReactNode }) {
-  const totalPickable = useMemo(() => {
-    const orders = generateOrders();
-    return orders.filter(o => o.status === 'pending' || o.status === 'picking').length;
+  const [pendingPickCount, setPendingPickCount] = useState(0);
+
+  const refreshCount = useCallback(async () => {
+    const count = await getPendingPickCount();
+    setPendingPickCount(count);
   }, []);
 
-  const [pickedCount, setPickedCount] = useState(0);
+  useEffect(() => {
+    refreshCount();
+  }, [refreshCount]);
 
-  const markPicked = useCallback((orderId: number) => {
-    setPickedCount(prev => prev + 1);
+  const markPicked = useCallback((_orderId: string) => {
+    setPendingPickCount(prev => Math.max(0, prev - 1));
   }, []);
-
-  const pendingPickCount = totalPickable - pickedCount;
 
   return (
-    <PickCountContext.Provider value={{ pendingPickCount, markPicked }}>
+    <PickCountContext.Provider value={{ pendingPickCount, markPicked, refreshCount }}>
       {children}
     </PickCountContext.Provider>
   );

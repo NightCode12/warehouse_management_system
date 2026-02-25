@@ -1,22 +1,4 @@
-import { MockStore, MockClient } from '@/types';
-
-export const STORES: MockStore[] = [
-  { id: 1, name: 'Federal Donuts', color: '#E63946', domain: 'federaldonuts.com' },
-  { id: 2, name: 'Underdog', color: '#457B9D', domain: 'underdogphilly.com' },
-  { id: 3, name: 'Zahav', color: '#2A9D8F', domain: 'zahavrestaurant.com' },
-  { id: 4, name: 'Laser Wolf', color: '#E9C46A', domain: 'laserwolfphilly.com' },
-  { id: 5, name: 'Goldie', color: '#F4A261', domain: 'goldiefalafel.com' },
-  { id: 6, name: 'K\'Far', color: '#9B2335', domain: 'kfarcafe.com' },
-  { id: 7, name: 'Dizengoff', color: '#264653', domain: 'dizengoffhummus.com' },
-];
-
-export const STORAGE_CLIENTS: MockClient[] = [
-  { id: 1, name: 'A-Best Swag', color: '#1a1a2e' },
-  { id: 2, name: 'Underdog Athletics', color: '#457B9D' },
-  { id: 3, name: 'Metro Anesthesiology', color: '#6B7280' },
-];
-
-// Manufacturer barcode → SKU mapping (simulates barcode_aliases table)
+// Manufacturer barcode → SKU mapping (used by test-qrcodes page)
 export const BARCODE_ALIASES: Record<string, string> = {
   '0123456789012': 'FD-TEE-BLK-L',
   '0123456789013': 'FD-TEE-BLK-M',

@@ -1,5 +1,6 @@
 'use client'
 
+import { CalendarDays } from 'lucide-react'
 import { OrderDisplay, OrderStatus } from '@/types'
 
 interface OrderTableProps {
@@ -22,11 +23,26 @@ const priorityStyles: Record<string, string> = {
   normal: '',
 }
 
+const sourceStyles: Record<string, { label: string; color: string }> = {
+  facilis: { label: 'Facilis', color: 'bg-indigo-100 text-indigo-700' },
+  shopify: { label: 'Shopify', color: 'bg-green-100 text-green-700' },
+  inksoft: { label: 'Inksoft', color: 'bg-pink-100 text-pink-700' },
+  manual: { label: 'Manual', color: 'bg-slate-100 text-slate-600' },
+}
+
 const nextStatus: Partial<Record<OrderStatus, { label: string; status: OrderStatus; color: string }>> = {
-  pending: { label: 'Start Pick', status: 'picking', color: 'bg-blue-500 hover:bg-blue-600' },
-  picking: { label: 'Mark Picked', status: 'picked', color: 'bg-teal-500 hover:bg-teal-600' },
   picked: { label: 'Mark Packed', status: 'packed', color: 'bg-purple-500 hover:bg-purple-600' },
   packed: { label: 'Ship', status: 'shipped', color: 'bg-emerald-500 hover:bg-emerald-600' },
+}
+
+function formatInHandsDate(dateStr: string | null): { text: string; urgent: boolean } | null {
+  if (!dateStr) return null
+  const date = new Date(dateStr + 'T00:00:00')
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  const text = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return { text, urgent: diffDays <= 2 }
 }
 
 export default function OrderTable({ orders, onStatusChange }: OrderTableProps) {
@@ -41,6 +57,7 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Store</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
+            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">In-Hands</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
           </tr>
@@ -49,6 +66,8 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
           {orders.map((order) => {
             const action = nextStatus[order.status]
             const createdAt = order.created_at ? new Date(order.created_at) : null
+            const inHands = formatInHandsDate(order.in_hands_date)
+            const src = order.source ? sourceStyles[order.source] : null
 
             return (
               <tr
@@ -56,7 +75,14 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                 className={`hover:bg-slate-50 transition-colors ${order.is_carryover ? 'bg-orange-50' : ''}`}
               >
                 <td className="px-4 py-4">
-                  <div className="font-semibold text-slate-800">{order.order_number}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800">{order.order_number}</span>
+                    {src && (
+                      <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${src.color}`}>
+                        {src.label}
+                      </span>
+                    )}
+                  </div>
                   {createdAt && (
                     <div className="text-xs text-slate-500">
                       {createdAt.toLocaleDateString()}{' '}
@@ -83,6 +109,18 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                   <span className="text-sm text-slate-600">{order.item_count} items</span>
                 </td>
                 <td className="px-4 py-4">
+                  {inHands ? (
+                    <div className={`flex items-center gap-1.5 text-sm font-medium ${
+                      inHands.urgent ? 'text-red-600' : 'text-slate-600'
+                    }`}>
+                      <CalendarDays className={`w-3.5 h-3.5 ${inHands.urgent ? 'text-red-500' : 'text-slate-400'}`} />
+                      {inHands.text}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-4">
                   <div className="flex items-center gap-2">
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[order.status]}`}
@@ -99,7 +137,14 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  {action && (
+                  {(order.status === 'pending' || order.status === 'picking') ? (
+                    <button
+                      onClick={() => onStatusChange(order.id, 'picking')}
+                      className="px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors bg-blue-500 hover:bg-blue-600"
+                    >
+                      Go Pick
+                    </button>
+                  ) : action && (
                     <button
                       onClick={() => onStatusChange(order.id, action.status)}
                       className={`px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors ${action.color}`}

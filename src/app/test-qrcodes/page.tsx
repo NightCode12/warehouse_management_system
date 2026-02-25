@@ -4,28 +4,28 @@ import { QRCodeSVG } from 'qrcode.react';
 import { BARCODE_ALIASES } from '@/lib/constants';
 
 const TEST_CODES = [
-  // Existing inventory SKUs with location (format: SKU|LOCATION)
-  { label: 'Federal Donuts Tee (Black / Large)', value: 'FD-TEE-BLK-L|A-01-03', type: 'SKU + Location' },
-  { label: 'Federal Donuts Tee (Black / Medium)', value: 'FD-TEE-BLK-M|A-01-02', type: 'SKU + Location' },
-  { label: 'Federal Donuts Cap (White)', value: 'FD-HAT-WHT|A-01-05', type: 'SKU + Location' },
-  { label: 'Underdog Hoodie (Gray / Medium)', value: 'UD-HOOD-GRY-M|B-02-01', type: 'SKU + Location' },
-  { label: 'Underdog Hoodie (Gray / Large)', value: 'UD-HOOD-GRY-L|B-02-02', type: 'SKU + Location' },
-  { label: 'Zahav Chef Apron (Blue)', value: 'ZH-APRON-BLU|C-01-02', type: 'SKU + Location' },
-  { label: 'Laser Wolf Tank (Black / Small)', value: 'LW-TANK-BLK-S|A-03-04', type: 'SKU + Location' },
-  { label: 'Goldie Tote Bag (Tan)', value: 'GL-BAG-TAN|D-01-01', type: 'SKU + Location' },
-  { label: 'K\'Far Coffee Mug (White)', value: 'KF-MUG-WHT|B-04-02', type: 'SKU + Location' },
-  { label: 'Dizengoff Vintage Tee (Olive / XL)', value: 'DZ-TEE-OLV-XL|C-02-03', type: 'SKU + Location' },
-  { label: 'Metro Scrubs (Blue / Medium)', value: 'MA-SCRUBS-BLU-M|E-01-01', type: 'SKU + Location' },
-  { label: 'Metro Scrubs (Blue / Large)', value: 'MA-SCRUBS-BLU-L|E-01-02', type: 'SKU + Location' },
+  // Existing inventory SKUs with location + variant (format: SKU|LOCATION|VARIANT)
+  { label: 'Federal Donuts Tee (Black / Large)', value: 'FD-TEE-BLK-L|A-01-03|Black / Large', type: 'SKU + Location + Variant' },
+  { label: 'Federal Donuts Tee (Black / Medium)', value: 'FD-TEE-BLK-M|A-01-02|Black / Medium', type: 'SKU + Location + Variant' },
+  { label: 'Federal Donuts Cap (White)', value: 'FD-HAT-WHT|A-01-05|White', type: 'SKU + Location + Variant' },
+  { label: 'Underdog Hoodie (Gray / Medium)', value: 'UD-HOOD-GRY-M|B-02-01|Gray / Medium', type: 'SKU + Location + Variant' },
+  { label: 'Underdog Hoodie (Gray / Large)', value: 'UD-HOOD-GRY-L|B-02-02|Gray / Large', type: 'SKU + Location + Variant' },
+  { label: 'Zahav Chef Apron (Blue)', value: 'ZH-APRON-BLU|C-01-02|Blue', type: 'SKU + Location + Variant' },
+  { label: 'Laser Wolf Tank (Black / Small)', value: 'LW-TANK-BLK-S|A-03-04|Black / Small', type: 'SKU + Location + Variant' },
+  { label: 'Goldie Tote Bag (Tan)', value: 'GL-BAG-TAN|D-01-01|Tan', type: 'SKU + Location + Variant' },
+  { label: 'K\'Far Coffee Mug (White)', value: 'KF-MUG-WHT|B-04-02|White', type: 'SKU + Location + Variant' },
+  { label: 'Dizengoff Vintage Tee (Olive / XL)', value: 'DZ-TEE-OLV-XL|C-02-03|Olive / XL', type: 'SKU + Location + Variant' },
+  { label: 'Metro Scrubs (Blue / Medium)', value: 'MA-SCRUBS-BLU-M|E-01-01|Blue / Medium', type: 'SKU + Location + Variant' },
+  { label: 'Metro Scrubs (Blue / Large)', value: 'MA-SCRUBS-BLU-L|E-01-02|Blue / Large', type: 'SKU + Location + Variant' },
   // Same SKUs with alternate locations (overflow / restocking bins)
-  { label: 'FD Tee Overflow (Black / Large)', value: 'FD-TEE-BLK-L|A-02-01', type: 'SKU + Location' },
-  { label: 'FD Cap Overflow (White)', value: 'FD-HAT-WHT|A-02-02', type: 'SKU + Location' },
-  { label: 'Underdog Hoodie Overflow (Gray / M)', value: 'UD-HOOD-GRY-M|B-01-01', type: 'SKU + Location' },
-  { label: 'Zahav Apron Overflow (Blue)', value: 'ZH-APRON-BLU|C-01-01', type: 'SKU + Location' },
-  { label: 'Goldie Tote Overflow (Tan)', value: 'GL-BAG-TAN|A-03-01', type: 'SKU + Location' },
-  { label: 'K\'Far Mug Overflow (White)', value: 'KF-MUG-WHT|B-04-01', type: 'SKU + Location' },
-  { label: 'Metro Scrubs Overflow (Blue / M)', value: 'MA-SCRUBS-BLU-M|A-01-01', type: 'SKU + Location' },
-  { label: 'Dizengoff Tee Overflow (Olive / XL)', value: 'DZ-TEE-OLV-XL|C-02-01', type: 'SKU + Location' },
+  { label: 'FD Tee Overflow (Black / Large)', value: 'FD-TEE-BLK-L|A-02-01|Black / Large', type: 'SKU + Location + Variant' },
+  { label: 'FD Cap Overflow (White)', value: 'FD-HAT-WHT|A-02-02|White', type: 'SKU + Location + Variant' },
+  { label: 'Underdog Hoodie Overflow (Gray / M)', value: 'UD-HOOD-GRY-M|B-01-01|Gray / Medium', type: 'SKU + Location + Variant' },
+  { label: 'Zahav Apron Overflow (Blue)', value: 'ZH-APRON-BLU|C-01-01|Blue', type: 'SKU + Location + Variant' },
+  { label: 'Goldie Tote Overflow (Tan)', value: 'GL-BAG-TAN|A-03-01|Tan', type: 'SKU + Location + Variant' },
+  { label: 'K\'Far Mug Overflow (White)', value: 'KF-MUG-WHT|B-04-01|White', type: 'SKU + Location + Variant' },
+  { label: 'Metro Scrubs Overflow (Blue / M)', value: 'MA-SCRUBS-BLU-M|A-01-01|Blue / Medium', type: 'SKU + Location + Variant' },
+  { label: 'Dizengoff Tee Overflow (Olive / XL)', value: 'DZ-TEE-OLV-XL|C-02-01|Olive / XL', type: 'SKU + Location + Variant' },
   // Barcode aliases (manufacturer barcodes — no location embedded)
   ...Object.entries(BARCODE_ALIASES).map(([barcode, sku]) => ({
     label: `Barcode alias for ${sku}`,
@@ -61,15 +61,20 @@ export default function TestQRCodesPage() {
                 <div className="font-mono text-sm font-bold text-slate-800">
                   {code.value.split('|')[0]}
                 </div>
-                {code.value.includes('|') && (
+                {code.value.split('|')[1] && (
                   <div className="font-mono text-xs text-emerald-600 font-semibold mt-0.5">
                     {code.value.split('|')[1]}
+                  </div>
+                )}
+                {code.value.split('|')[2] && (
+                  <div className="text-xs text-purple-600 font-medium mt-0.5">
+                    {code.value.split('|')[2]}
                   </div>
                 )}
                 <div className="text-xs text-slate-500 mt-1">{code.label}</div>
                 <span
                   className={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold ${
-                    code.type === 'SKU + Location'
+                    code.type.startsWith('SKU')
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-purple-100 text-purple-700'
                   }`}

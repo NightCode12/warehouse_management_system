@@ -3,14 +3,20 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Package, Truck, AlertTriangle, Clock, Box, ChevronRight } from 'lucide-react';
-import { MockOrder } from '@/types';
-import { STORES } from '@/lib/constants';
+import { PickableOrder } from '@/types';
 
-interface OperationsDashboardProps {
-  orders: MockOrder[];
+interface StoreInfo {
+  id: string;
+  name: string;
+  color: string;
 }
 
-export default function OperationsDashboard({ orders }: OperationsDashboardProps) {
+interface OperationsDashboardProps {
+  orders: PickableOrder[];
+  stores: StoreInfo[];
+}
+
+export default function OperationsDashboard({ orders, stores }: OperationsDashboardProps) {
   const [time, setTime] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -26,16 +32,23 @@ export default function OperationsDashboard({ orders }: OperationsDashboardProps
     packed: orders.filter(o => o.status === 'packed').length,
     shipped: orders.filter(o => o.status === 'shipped').length,
     rush: orders.filter(o => o.priority === 'rush' || o.priority === 'same-day').length,
-    carryover: orders.filter(o => o.isCarryover).length,
+    carryover: orders.filter(o => o.is_carryover).length,
   };
 
-  const storeStats = STORES.map(store => ({
+  const storeStats = stores.map(store => ({
     ...store,
-    count: orders.filter(o => o.store.id === store.id && o.status !== 'shipped').length
+    count: orders.filter(o => o.store_id === store.id && o.status !== 'shipped').length
   }));
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6 flex flex-col">
+    <div className="h-screen overflow-hidden bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6 flex flex-col">
+      <style>{`
+        @keyframes pulse-red {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+          50% { box-shadow: 0 0 20px 8px rgba(239, 68, 68, 0.4); }
+        }
+        .pulse-red-glow { animation: pulse-red 2s ease-in-out infinite; }
+      `}</style>
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
@@ -107,12 +120,12 @@ export default function OperationsDashboard({ orders }: OperationsDashboardProps
       {/* Alerts Row */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         {stats.rush > 0 && (
-          <div className="bg-red-500/20 backdrop-blur rounded-2xl p-4 border border-red-500/30 flex items-center gap-4">
+          <div className="bg-red-500/20 backdrop-blur rounded-2xl p-4 border border-red-500/30 flex items-center gap-4 pulse-red-glow">
             <div className="p-3 bg-red-500 rounded-xl animate-pulse">
               <AlertTriangle className="w-6 h-6 text-white" />
             </div>
             <div>
-              <div className="text-red-400 font-bold">PRIORITY ORDERS</div>
+              <div className="text-red-400 font-bold animate-pulse">PRIORITY ORDERS</div>
               <div className="text-3xl font-black text-white">{stats.rush} Rush/Same-Day</div>
             </div>
           </div>
@@ -135,7 +148,7 @@ export default function OperationsDashboard({ orders }: OperationsDashboardProps
       <div className="flex-1 flex flex-col gap-4 min-h-0">
         <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-4 border border-slate-700 flex-1 flex flex-col">
           <h2 className="text-lg font-bold text-slate-300 mb-4">Orders by Store</h2>
-          <div className="grid grid-cols-7 gap-3 flex-1">
+          <div className={`grid gap-3 flex-1`} style={{ gridTemplateColumns: `repeat(${Math.min(storeStats.length, 7)}, minmax(0, 1fr))` }}>
             {storeStats.map(store => (
               <div key={store.id} className="text-center flex flex-col items-center">
                 <div
@@ -158,7 +171,7 @@ export default function OperationsDashboard({ orders }: OperationsDashboardProps
           </div>
           <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+              className="h-full bg-linear-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
               style={{ width: `${stats.total > 0 ? (stats.shipped / stats.total) * 100 : 0}%` }}
             />
           </div>

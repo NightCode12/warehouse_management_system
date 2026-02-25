@@ -1,21 +1,22 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { ScanLine, Plus, MapPin, AlertCircle, CheckCircle, Camera } from 'lucide-react';
-import { MockInventoryItem, ReceivingItem, MockClient } from '@/types';
-import { BARCODE_ALIASES } from '@/lib/constants';
+import { InventoryDisplay, ClientDisplay } from '@/types';
+import { getAllBarcodeAliases } from '@/lib/supabase/queries';
 import BarcodeScanner from './BarcodeScanner';
 
 interface ItemEntryFormProps {
-  inventory: MockInventoryItem[];
-  client: MockClient;
-  onAddItem: (item: Omit<ReceivingItem, 'id' | 'receivedAt'>) => void;
+  inventory: InventoryDisplay[];
+  client: ClientDisplay;
+  onAddItem: (item: { sku: string; product_name: string; variant: string; quantity: number; location_code: string; scannedBarcode?: string }) => void;
 }
 
 interface ResolvedItem {
   sku: string;
   name: string;
   variant: string;
+  inventoryId?: string;
 }
 
 const LOCATION_REGEX = /^[A-Z]-\d{2}-\d{2}$/;
@@ -31,8 +32,21 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
   const [locationError, setLocationError] = useState('');
   const [barcodeSearched, setBarcodeSearched] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [barcodeAliases, setBarcodeAliases] = useState<Map<string, string>>(new Map());
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+
+  // Load barcode aliases from Supabase on mount
+  useEffect(() => {
+    getAllBarcodeAliases().then(aliases => {
+      const map = new Map<string, string>();
+      for (const alias of aliases) {
+        map.set(alias.external_barcode, alias.sku);
+        map.set(alias.external_barcode.toUpperCase(), alias.sku);
+      }
+      setBarcodeAliases(map);
+    });
+  }, []);
 
   const resolveBarcode = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -49,17 +63,17 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
     // Direct SKU match in inventory
     const directMatch = inventory.find(i => i.sku.toUpperCase() === upper);
     if (directMatch) {
-      setResolvedItem({ sku: directMatch.sku, name: directMatch.name, variant: directMatch.variant });
+      setResolvedItem({ sku: directMatch.sku, name: directMatch.product_name, variant: directMatch.variant || '', inventoryId: directMatch.id });
       setIsNewItem(false);
       return;
     }
 
-    // Check barcode aliases
-    const aliasedSku = BARCODE_ALIASES[trimmed] || BARCODE_ALIASES[upper];
+    // Check barcode aliases from DB
+    const aliasedSku = barcodeAliases.get(trimmed) || barcodeAliases.get(upper);
     if (aliasedSku) {
       const aliasMatch = inventory.find(i => i.sku === aliasedSku);
       if (aliasMatch) {
-        setResolvedItem({ sku: aliasMatch.sku, name: aliasMatch.name, variant: aliasMatch.variant });
+        setResolvedItem({ sku: aliasMatch.sku, name: aliasMatch.product_name, variant: aliasMatch.variant || '', inventoryId: aliasMatch.id });
         setIsNewItem(false);
         return;
       }
@@ -68,7 +82,7 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
     // Not found — new item
     setResolvedItem(null);
     setIsNewItem(true);
-  }, [inventory]);
+  }, [inventory, barcodeAliases]);
 
   const validateLocation = (value: string) => {
     const upper = value.toUpperCase();
@@ -89,16 +103,14 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
   const handleAdd = () => {
     if (!canAdd()) return;
 
-    const item: Omit<ReceivingItem, 'id' | 'receivedAt'> = {
+    onAddItem({
       sku: resolvedItem?.sku || barcode.trim().toUpperCase(),
-      name: resolvedItem?.name || manualName.trim(),
-      variant: resolvedItem?.variant || manualVariant.trim(),
+      product_name: resolvedItem?.name || manualName.trim(),
+      variant: manualVariant.trim() || resolvedItem?.variant || '',
       quantity,
-      location: location.trim().toUpperCase(),
+      location_code: location.trim().toUpperCase(),
       scannedBarcode: barcode.trim(),
-    };
-
-    onAddItem(item);
+    });
 
     // Reset all fields for next scan
     setBarcode('');
@@ -125,14 +137,17 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
   const handleCameraScan = useCallback((value: string) => {
     setScannerOpen(false);
 
-    // Parse SKU|LOCATION format from QR codes
+    // Parse SKU|LOCATION|VARIANT format from QR codes
     let sku = value;
     if (value.includes('|')) {
-      const [skuPart, locationPart] = value.split('|');
-      sku = skuPart;
-      if (locationPart && LOCATION_REGEX.test(locationPart.toUpperCase())) {
-        setLocation(locationPart.toUpperCase());
+      const parts = value.split('|');
+      sku = parts[0];
+      if (parts[1] && LOCATION_REGEX.test(parts[1].toUpperCase())) {
+        setLocation(parts[1].toUpperCase());
         setLocationError('');
+      }
+      if (parts[2]) {
+        setManualVariant(parts[2]);
       }
     }
 
@@ -145,7 +160,7 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
       <div className="flex items-center gap-2 mb-4">
         <div
           className="w-3 h-3 rounded-full"
-          style={{ backgroundColor: client.color }}
+          style={{ backgroundColor: client.color || '#999' }}
         />
         <span className="font-semibold text-slate-800 text-sm">{client.name}</span>
       </div>
@@ -200,7 +215,14 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
               <span className="text-xs font-medium text-emerald-700">Item found</span>
             </div>
             <div className="text-sm font-semibold text-slate-800">{resolvedItem.name}</div>
-            <div className="text-xs text-slate-500">{resolvedItem.variant} &bull; {resolvedItem.sku}</div>
+            <div className="text-xs text-slate-500">{resolvedItem.sku}</div>
+            <input
+              type="text"
+              value={manualVariant || resolvedItem.variant}
+              onChange={e => setManualVariant(e.target.value)}
+              placeholder="Variant (e.g. Black / Large)"
+              className="w-full mt-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            />
           </div>
         )}
 

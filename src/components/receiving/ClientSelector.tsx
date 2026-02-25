@@ -1,14 +1,14 @@
 'use client';
 
 import { Package } from 'lucide-react';
-import { MockClient } from '@/types';
-import { STORAGE_CLIENTS } from '@/lib/constants';
+import { ClientDisplay } from '@/types';
 
 interface ClientSelectorProps {
-  onSelectClient: (client: MockClient) => void;
+  clients: ClientDisplay[];
+  onSelectClient: (client: ClientDisplay) => void;
 }
 
-export default function ClientSelector({ onSelectClient }: ClientSelectorProps) {
+export default function ClientSelector({ clients, onSelectClient }: ClientSelectorProps) {
   return (
     <div>
       <div className="text-center mb-8">
@@ -20,17 +20,17 @@ export default function ClientSelector({ onSelectClient }: ClientSelectorProps) 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
-        {STORAGE_CLIENTS.map(client => (
+        {clients.map(client => (
           <button
             key={client.id}
             onClick={() => onSelectClient(client)}
             className="bg-white rounded-xl border-2 border-slate-200 hover:shadow-lg p-6 text-left transition-all group"
-            style={{ borderLeftColor: client.color, borderLeftWidth: '4px' }}
+            style={{ borderLeftColor: client.color || '#999', borderLeftWidth: '4px' }}
           >
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                style={{ backgroundColor: client.color }}
+                style={{ backgroundColor: client.color || '#999' }}
               >
                 {client.name.charAt(0)}
               </div>
