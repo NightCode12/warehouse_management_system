@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2, CheckCircle, X, Package } from 'lucide-react';
-import { ReceivingReceipt } from '@/types';
+import { Trash2, CheckCircle, Package } from 'lucide-react';
+import { ReceivingReceiptDisplay } from '@/types';
 
 interface ReceiptSummaryProps {
-  receipt: ReceivingReceipt;
-  onRemoveItem: (itemId: number) => void;
+  receipt: ReceivingReceiptDisplay;
+  onRemoveItem: (itemId: string) => void;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -14,7 +14,7 @@ interface ReceiptSummaryProps {
 export default function ReceiptSummary({ receipt, onRemoveItem, onComplete, onCancel }: ReceiptSummaryProps) {
   const [confirming, setConfirming] = useState(false);
 
-  const totalUnits = receipt.items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalUnits = receipt.items.reduce((sum, item) => sum + item.quantity_received, 0);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -24,16 +24,18 @@ export default function ReceiptSummary({ receipt, onRemoveItem, onComplete, onCa
           <div>
             <h3 className="font-bold text-lg">Receipt Summary</h3>
             <p className="text-slate-300 text-sm">
-              {receipt.receiptNumber} &bull; {receipt.items.length} line items &bull; {totalUnits} units
+              {receipt.reference_number} &bull; {receipt.items.length} line items &bull; {totalUnits} units
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className="px-2.5 py-1 rounded-full text-xs font-medium"
-              style={{ backgroundColor: receipt.client.color + '40', color: '#fff' }}
-            >
-              {receipt.client.name}
-            </div>
+            {receipt.client_name && (
+              <div
+                className="px-2.5 py-1 rounded-full text-xs font-medium"
+                style={{ backgroundColor: (receipt.client_color || '#999') + '40', color: '#fff' }}
+              >
+                {receipt.client_name}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -46,7 +48,7 @@ export default function ReceiptSummary({ receipt, onRemoveItem, onComplete, onCa
           <p className="text-slate-400 text-sm mt-1">Scan a barcode or enter a SKU to add items</p>
         </div>
       ) : (
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-100 overflow-y-auto">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
               <tr>
@@ -67,20 +69,22 @@ export default function ReceiptSummary({ receipt, onRemoveItem, onComplete, onCa
                     <span className="text-sm font-mono text-slate-600">{item.sku}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-slate-800">{item.name}</div>
+                    <div className="text-sm font-medium text-slate-800">{item.product_name || item.sku}</div>
                     {item.variant && (
                       <div className="text-xs text-slate-500">{item.variant}</div>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-bold text-slate-800">{item.quantity}</span>
+                    <span className="text-sm font-bold text-slate-800">{item.quantity_received}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-mono text-slate-600">{item.location}</span>
+                    <span className="text-sm font-mono text-slate-600">{item.location_code || '—'}</span>
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs text-slate-400">
-                      {item.receivedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">

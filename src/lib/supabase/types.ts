@@ -462,19 +462,24 @@ export type Database = {
       orders: {
         Row: {
           assigned_to: string | null
+          client_id: string | null
           created_at: string | null
           customer_email: string | null
           customer_name: string | null
           id: string
+          in_hands_date: string | null
           is_carryover: boolean | null
           notes: string | null
           order_number: string
           packed_at: string | null
+          picked_at: string | null
           priority: string
           shipped_at: string | null
           shipping_address: Json | null
           shopify_created_at: string | null
           shopify_order_id: string | null
+          source: string | null
+          source_id: string | null
           status: string
           store_id: string | null
           tracking_number: string | null
@@ -482,19 +487,24 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          client_id?: string | null
           created_at?: string | null
           customer_email?: string | null
           customer_name?: string | null
           id?: string
+          in_hands_date?: string | null
           is_carryover?: boolean | null
           notes?: string | null
           order_number: string
           packed_at?: string | null
+          picked_at?: string | null
           priority?: string
           shipped_at?: string | null
           shipping_address?: Json | null
           shopify_created_at?: string | null
           shopify_order_id?: string | null
+          source?: string | null
+          source_id?: string | null
           status?: string
           store_id?: string | null
           tracking_number?: string | null
@@ -502,19 +512,24 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          client_id?: string | null
           created_at?: string | null
           customer_email?: string | null
           customer_name?: string | null
           id?: string
+          in_hands_date?: string | null
           is_carryover?: boolean | null
           notes?: string | null
           order_number?: string
           packed_at?: string | null
+          picked_at?: string | null
           priority?: string
           shipped_at?: string | null
           shipping_address?: Json | null
           shopify_created_at?: string | null
           shopify_order_id?: string | null
+          source?: string | null
+          source_id?: string | null
           status?: string
           store_id?: string | null
           tracking_number?: string | null
@@ -526,6 +541,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
@@ -596,6 +618,7 @@ export type Database = {
           quantity_received: number
           receipt_id: string | null
           sku: string
+          variant: string | null
         }
         Insert: {
           created_at?: string | null
@@ -608,6 +631,7 @@ export type Database = {
           quantity_received?: number
           receipt_id?: string | null
           sku: string
+          variant?: string | null
         }
         Update: {
           created_at?: string | null
@@ -620,6 +644,7 @@ export type Database = {
           quantity_received?: number
           receipt_id?: string | null
           sku?: string
+          variant?: string | null
         }
         Relationships: [
           {

@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { X, CheckCircle, MapPin, ArrowLeft, Package } from 'lucide-react';
-import { MockOrder } from '@/types';
+import { PickableOrder } from '@/types';
 import ProductImage from '@/components/ui/ProductImage';
 
 interface PickModalProps {
-  order: MockOrder;
+  order: PickableOrder;
   onClose: () => void;
-  onSubmit: (orderId: number) => void;
+  onSubmit: (orderId: string) => void;
 }
 
 export default function PickModal({ order, onClose, onSubmit }: PickModalProps) {
@@ -49,16 +49,16 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
                   </button>
                 )}
                 <h3 className="font-bold text-lg">
-                  {phase === 'picking' ? 'Pick Order' : 'Review Pick'} — {order.orderNumber}
+                  {phase === 'picking' ? 'Pick Order' : 'Review Pick'} — {order.order_number}
                 </h3>
               </div>
               <div className="flex items-center gap-3 mt-1">
-                <span className="text-slate-300 text-sm">{order.customer}</span>
+                <span className="text-slate-300 text-sm">{order.customer_name}</span>
                 <div
                   className="px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{ backgroundColor: order.store.color + '40', color: '#fff' }}
+                  style={{ backgroundColor: order.store_color + '40', color: '#fff' }}
                 >
-                  {order.store.name}
+                  {order.store_name}
                 </div>
                 {order.priority !== 'normal' && (
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
@@ -102,7 +102,7 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
                 const isPicked = pickedItems[index] || false;
                 return (
                   <div
-                    key={index}
+                    key={item.id}
                     onClick={() => toggleItem(index)}
                     className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-colors ${
                       isPicked ? 'bg-emerald-50' : 'hover:bg-slate-50'
@@ -116,18 +116,18 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
                     </div>
 
                     {/* Product Image */}
-                    <ProductImage sku={item.sku} name={item.name} size="md" editable={false} />
+                    <ProductImage sku={item.sku} name={item.product_name} size="md" editable={false} />
 
                     {/* Item Details */}
                     <div className={`flex-1 ${isPicked ? 'opacity-60' : ''}`}>
                       <div className={`font-medium text-slate-800 ${isPicked ? 'line-through' : ''}`}>
-                        {item.name}
+                        {item.product_name}
                       </div>
-                      <div className="text-sm text-slate-500">{item.variant} &bull; {item.sku}</div>
+                      <div className="text-sm text-slate-500">{item.variant || ''} &bull; {item.sku}</div>
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs text-slate-600">
                           <MapPin className="w-3 h-3" />
-                          <span className="font-mono font-medium">{item.location}</span>
+                          <span className="font-mono font-medium">{item.location_code || '—'}</span>
                         </div>
                       </div>
                     </div>
@@ -186,15 +186,15 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {order.items.map((item, index) => (
-                    <tr key={index}>
+                  {order.items.map((item) => (
+                    <tr key={item.id}>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <ProductImage sku={item.sku} name={item.name} size="sm" editable={false} />
+                          <ProductImage sku={item.sku} name={item.product_name} size="sm" editable={false} />
                           <div>
-                            <div className="font-medium text-slate-800 text-sm">{item.name}</div>
-                            <div className="text-xs text-slate-500">{item.variant}</div>
+                            <div className="font-medium text-slate-800 text-sm">{item.product_name}</div>
+                            <div className="text-xs text-slate-500">{item.variant || ''}</div>
                           </div>
                         </div>
                       </td>
@@ -202,7 +202,7 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
                         <span className="text-sm font-mono text-slate-600">{item.sku}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm font-mono text-slate-600">{item.location}</span>
+                        <span className="text-sm font-mono text-slate-600">{item.location_code || '—'}</span>
                       </td>
                       <td className="px-6 py-3 text-right">
                         <span className="text-sm font-bold text-slate-800">{item.quantity}</span>
