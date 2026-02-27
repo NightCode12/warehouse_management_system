@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Package, MapPin, CheckCircle2, Circle } from 'lucide-react'
+import { Package, MapPin, CheckCircle2, Circle, Truck } from 'lucide-react'
 import { OrderDisplay, OrderItemDisplay } from '@/types'
 import { getOrderItemsByOrderId } from '@/lib/supabase/queries'
 
@@ -85,6 +85,28 @@ export default function OrderItemsModal({ order, onClose }: OrderItemsModalProps
             </>
           )}
         </div>
+
+        {/* Tracking info banner */}
+        {order.status === 'shipped' && (order.tracking_number || order.tracking_company) && (
+          <div className="mx-6 mt-4 flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+              <Truck className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                {order.tracking_company && (
+                  <span className="text-sm font-bold text-emerald-800">{order.tracking_company}</span>
+                )}
+                {!order.tracking_company && (
+                  <span className="text-sm font-semibold text-emerald-700">Shipped</span>
+                )}
+              </div>
+              {order.tracking_number && (
+                <p className="text-sm text-emerald-700 font-mono mt-0.5 truncate">{order.tracking_number}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Items list */}
         <div className="flex-1 overflow-y-auto px-6 py-4">

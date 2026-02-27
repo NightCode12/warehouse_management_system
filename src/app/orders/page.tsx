@@ -5,8 +5,9 @@ import AppShell from '@/components/layout/AppShell'
 import TopBar from '@/components/layout/TopBar'
 import OrderTable from '@/components/orders/OrderTable'
 import OrderItemsModal from '@/components/orders/OrderItemsModal'
+import ShipOrderModal from '@/components/orders/ShipOrderModal'
 import Pagination, { usePagination } from '@/components/ui/Pagination'
-import { getOrdersWithDetails, getStores, updateOrderStatus } from '@/lib/supabase/queries'
+import { getOrdersWithDetails, getStores, updateOrderStatus, shipOrder } from '@/lib/supabase/queries'
 import { usePickCount } from '@/lib/PickCountContext'
 import { useAuth } from '@/lib/AuthContext'
 import { hasPermission } from '@/lib/permissions'
@@ -20,6 +21,7 @@ export default function OrdersPage() {
   const [storeFilter, setStoreFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<OrderDisplay | null>(null)
+  const [shippingOrder, setShippingOrder] = useState<OrderDisplay | null>(null)
   const { refreshCount } = usePickCount()
   const { user } = useAuth()
   const canEditStatus = user ? hasPermission(user.role, 'orders:edit_status') : false
@@ -68,8 +70,17 @@ export default function OrdersPage() {
     shipped: orders.filter((o) => o.status === 'shipped').length,
   }
 
-  // Handle status change
+  // Handle status change — intercept 'shipped' to show tracking modal
   const handleStatusChange = async (orderId: string, newStatus: string) => {
+    // For shipping, show the modal to collect tracking info
+    if (newStatus === 'shipped') {
+      const order = orders.find((o) => o.id === orderId)
+      if (order) {
+        setShippingOrder(order)
+        return
+      }
+    }
+
     try {
       await updateOrderStatus(orderId, newStatus as OrderStatus)
 
@@ -85,6 +96,29 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('Failed to update order status:', error)
       alert('Failed to update order status. Please try again.')
+    }
+  }
+
+  // Handle ship confirmation from modal
+  const handleShipConfirm = async (orderId: string, trackingNumber: string, trackingCompany: string) => {
+    const result = await shipOrder(orderId, trackingNumber || undefined, trackingCompany || undefined)
+
+    // Update local state with tracking info
+    setOrders(prevOrders =>
+      prevOrders.map((order) =>
+        order.id === orderId ? {
+          ...order,
+          status: 'shipped' as OrderStatus,
+          tracking_number: trackingNumber || null,
+          tracking_company: trackingCompany || null,
+        } : order
+      )
+    )
+
+    refreshCount()
+
+    if (!result.shopifySynced && orders.find(o => o.id === orderId)?.source === 'shopify') {
+      console.warn('Order shipped locally but Shopify sync failed — will sync when store token is configured')
     }
   }
 
@@ -186,6 +220,14 @@ export default function OrdersPage() {
         <OrderItemsModal
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
+        />
+      )}
+
+      {shippingOrder && (
+        <ShipOrderModal
+          order={shippingOrder}
+          onConfirm={handleShipConfirm}
+          onClose={() => setShippingOrder(null)}
         />
       )}
     </AppShell>

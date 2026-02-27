@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
         status: 'shipped',
         shipped_at: new Date().toISOString(),
         tracking_number: trackingNumber ?? null,
+        tracking_company: trackingCompany ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId)

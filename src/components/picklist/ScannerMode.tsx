@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, CheckCircle, MapPin, Camera, Keyboard, AlertTriangle, Volume2, VolumeX, SwitchCamera, SkipForward, ChevronRight, Bluetooth, ScanLine } from 'lucide-react';
+import { X, CheckCircle, MapPin, Camera, Keyboard, AlertTriangle, Volume2, VolumeX, SwitchCamera, SkipForward, ChevronRight, Bluetooth, ScanLine, Link2, Loader2 } from 'lucide-react';
 import { PickableOrder, OrderItemDisplay } from '@/types';
 import ProductImage from '@/components/ui/ProductImage';
-import { getAllBarcodeAliases } from '@/lib/supabase/queries';
+import { getAllBarcodeAliases, saveBarcodeAlias } from '@/lib/supabase/queries';
+import { useAuth } from '@/lib/AuthContext';
 
 interface ScannerModeProps {
   order: PickableOrder;
@@ -221,6 +222,7 @@ function ItemChecklist({ items, scannedItems, currentItemIndex }: {
 }
 
 export default function ScannerMode({ order, onClose, onComplete }: ScannerModeProps) {
+  const { user } = useAuth();
   const [scannedItems, setScannedItems] = useState<Map<number, ScannedItem>>(new Map());
   const [manualInput, setManualInput] = useState('');
   const [inputMode, setInputMode] = useState<'camera' | 'manual' | 'bluetooth'>('bluetooth');
@@ -228,6 +230,9 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
   const [flashColor, setFlashColor] = useState<'green' | 'red' | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [barcodeAliases, setBarcodeAliases] = useState<Map<string, string>>(new Map());
+  const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [aliasSaving, setAliasSaving] = useState(false);
+  const [confirmAliasItem, setConfirmAliasItem] = useState<{ item: OrderItemDisplay; index: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const scannedItemsRef = useRef(scannedItems);
   scannedItemsRef.current = scannedItems;
@@ -311,12 +316,20 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
   const handleScan = useCallback((barcode: string) => {
     if (!barcode.trim()) return;
 
-    const result = findItemByBarcode(barcode);
+    // Parse SKU|LOCATION|VARIANT pipe format from QR codes
+    let sku = barcode.trim();
+    if (barcode.includes('|')) {
+      const parts = barcode.split('|');
+      sku = parts[0].trim();
+    }
+
+    const result = findItemByBarcode(sku);
 
     if (!result) {
-      setLastScanResult({ success: false, message: `No match for: ${barcode}` });
+      setLastScanResult({ success: false, message: `No match for: ${sku}` });
       triggerFeedback(false);
       setManualInput('');
+      setUnknownBarcode(sku);
       return;
     }
 
@@ -355,6 +368,36 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
     handleScan(manualInput);
   };
 
+  const handleCreateAlias = async (item: OrderItemDisplay, itemIndex: number) => {
+    if (!unknownBarcode || aliasSaving) return;
+    setAliasSaving(true);
+    try {
+      await saveBarcodeAlias(unknownBarcode, item.sku, undefined, user?.id);
+      // Update local alias map so future scans work immediately
+      setBarcodeAliases(prev => {
+        const next = new Map(prev);
+        next.set(unknownBarcode, item.sku);
+        next.set(unknownBarcode.toUpperCase(), item.sku);
+        return next;
+      });
+      // Auto-mark the item as scanned
+      if (!scannedItemsRef.current.has(itemIndex)) {
+        setScannedItems(prev => {
+          const next = new Map(prev);
+          next.set(itemIndex, { index: itemIndex, scannedAt: new Date() });
+          return next;
+        });
+      }
+      setLastScanResult({ success: true, message: `Linked "${unknownBarcode}" → ${item.sku} — ${item.product_name}` });
+      triggerFeedback(true);
+      setUnknownBarcode(null);
+    } catch {
+      setLastScanResult({ success: false, message: 'Failed to save barcode alias. Try again.' });
+    } finally {
+      setAliasSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
       {/* Flash overlay */}
@@ -378,6 +421,158 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
           100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
       `}</style>
+
+      {/* Unknown Barcode — Create Alias Dialog */}
+      {unknownBarcode && (
+        <div className="absolute inset-0 z-[70] bg-slate-900/95 flex flex-col">
+          <div className="px-4 sm:px-6 py-4 border-b border-amber-500/30 bg-amber-500/10 shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 border-2 border-amber-500/40 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-amber-300">Unknown Barcode Scanned</h3>
+                  <p className="font-mono text-amber-400 text-lg font-bold mt-0.5">&ldquo;{unknownBarcode}&rdquo;</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setUnknownBarcode(null); setConfirmAliasItem(null); }}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="px-4 sm:px-6 py-3 border-b border-white/10 bg-slate-800/50 shrink-0">
+            <p className="text-sm text-slate-300 font-medium">
+              Select the product this barcode belongs to. A permanent link will be created so future scans match automatically.
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+            <div className="space-y-2 max-w-lg mx-auto">
+              {order.items.map((item, index) => {
+                const isScanned = scannedItems.has(index);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setConfirmAliasItem({ item, index })}
+                    disabled={aliasSaving}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors text-left ${
+                      isScanned
+                        ? 'border-white/5 bg-white/5 opacity-40'
+                        : 'border-white/10 bg-white/5 hover:bg-blue-500/15 hover:border-blue-500/30 active:bg-blue-500/25'
+                    }`}
+                  >
+                    <div className="shrink-0">
+                      <ProductImage sku={item.sku} name={item.product_name} size="sm" editable={false} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm text-white truncate">{item.product_name}</div>
+                      <div className="text-xs text-slate-400 truncate">{item.variant || 'No variant'}</div>
+                      <div className="text-xs font-mono text-slate-500 mt-0.5">{item.sku}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {isScanned ? (
+                        <span className="text-xs text-emerald-500 font-semibold">Scanned</span>
+                      ) : (
+                        <>
+                          <div className="text-xs text-slate-500">{item.location_code || '—'}</div>
+                          <div className="text-lg font-bold text-slate-400">&times;{item.quantity}</div>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {aliasSaving && (
+            <div className="px-6 py-3 border-t border-white/10 flex items-center justify-center gap-2 text-sm text-blue-400 shrink-0">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Saving alias...
+            </div>
+          )}
+
+          <div className="px-4 sm:px-6 py-3 border-t border-white/10 shrink-0">
+            <button
+              onClick={() => { setUnknownBarcode(null); setConfirmAliasItem(null); }}
+              className="w-full px-4 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+            >
+              Cancel — skip this barcode
+            </button>
+          </div>
+
+          {/* Confirmation Modal */}
+          {confirmAliasItem && (
+            <div className="absolute inset-0 z-80 bg-black/80 flex items-center justify-center p-4">
+              <div className="bg-slate-800 border border-white/15 rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl">
+                <div className="px-5 py-4 border-b border-amber-500/30 bg-amber-500/10">
+                  <div className="flex items-center gap-2 text-amber-400 mb-1">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span className="font-bold text-sm uppercase tracking-wide">Confirm Link</span>
+                  </div>
+                  <p className="text-sm text-slate-300">
+                    Are you sure you want to permanently link this barcode?
+                  </p>
+                </div>
+
+                <div className="px-5 py-4 space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                      <ScanLine className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Barcode</div>
+                      <div className="font-mono font-bold text-amber-300 text-sm">{unknownBarcode}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center">
+                    <Link2 className="w-4 h-4 text-slate-500" />
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                    <div className="shrink-0">
+                      <ProductImage sku={confirmAliasItem.item.sku} name={confirmAliasItem.item.product_name} size="sm" editable={false} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Product</div>
+                      <div className="font-semibold text-white text-sm truncate">{confirmAliasItem.item.product_name}</div>
+                      <div className="text-xs text-slate-400">{confirmAliasItem.item.variant || 'No variant'}</div>
+                      <div className="font-mono text-xs text-slate-500">{confirmAliasItem.item.sku}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-5 py-4 border-t border-white/10 flex gap-3">
+                  <button
+                    onClick={() => setConfirmAliasItem(null)}
+                    disabled={aliasSaving}
+                    className="flex-1 px-4 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors border border-white/10"
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCreateAlias(confirmAliasItem.item, confirmAliasItem.index);
+                      setConfirmAliasItem(null);
+                    }}
+                    disabled={aliasSaving}
+                    className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-amber-600 hover:bg-amber-500 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    {aliasSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                    Confirm Link
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 border-b border-white/10 shrink-0">
