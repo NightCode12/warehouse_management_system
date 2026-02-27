@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, X, SwitchCamera } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface BarcodeScannerProps {
   onScan: (value: string) => void;
@@ -62,7 +62,20 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         }
 
         setCameras(devices);
-        const scanner = new Html5Qrcode(scannerId);
+        const scanner = new Html5Qrcode(scannerId, {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+          ],
+          verbose: false,
+        });
         scannerRef.current = scanner;
 
         const cameraId = devices[activeCameraIndex]?.id || devices[0].id;
@@ -71,8 +84,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
           cameraId,
           {
             fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1,
+            qrbox: { width: 280, height: 160 },
           },
           (decodedText) => {
             handleScan(decodedText);

@@ -4,9 +4,13 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ReceivingView from '@/components/receiving/ReceivingView';
 import { getInventoryWithClients, getClients, getCompletedReceipts } from '@/lib/supabase/queries';
+import { useAuth } from '@/lib/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { InventoryDisplay, ClientDisplay, ReceivingReceiptDisplay } from '@/types';
 
 export default function ReceivingPage() {
+  const { user } = useAuth();
+  const canManageClients = user ? hasPermission(user.role, 'receiving:manage_clients') : false;
   const [inventory, setInventory] = useState<InventoryDisplay[]>([]);
   const [clients, setClients] = useState<ClientDisplay[]>([]);
   const [completedReceipts, setCompletedReceipts] = useState<ReceivingReceiptDisplay[]>([]);
@@ -45,8 +49,10 @@ export default function ReceivingPage() {
         inventory={inventory}
         setInventory={setInventory}
         clients={clients}
+        setClients={setClients}
         completedReceipts={completedReceipts}
         setCompletedReceipts={setCompletedReceipts}
+        canManageClients={canManageClients}
       />
     </AppShell>
   );

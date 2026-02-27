@@ -1,5 +1,130 @@
 import { supabase } from './client'
-import { OrderStatus, OrderDisplay, PickableOrder, OrderItemDisplay, InventoryDisplay, ClientDisplay, ReceivingReceiptDisplay, ReceivingItemDisplay } from '@/types'
+import { OrderStatus, OrderDisplay, PickableOrder, OrderItemDisplay, InventoryDisplay, ClientDisplay, ReceivingReceiptDisplay, ReceivingItemDisplay, AppUser } from '@/types'
+
+// ─── Auth ──────────────────────────────────────────────────────
+
+export async function loginUser(email: string, password: string): Promise<AppUser | null> {
+  const { data, error } = await supabase
+    .rpc('verify_user_login', {
+      input_email: email.toLowerCase().trim(),
+      input_password: password,
+    })
+
+  if (error) {
+    console.error('Error verifying login:', error)
+    return null
+  }
+  if (!data) return null
+
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    role: data.role as AppUser['role'],
+  }
+}
+
+export async function getUserById(id: string): Promise<AppUser | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, role, is_active')
+    .eq('id', id)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error fetching user by id:', error)
+    return null
+  }
+  if (!data) return null
+
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    role: data.role as AppUser['role'],
+  }
+}
+
+// ─── User Management (Admin) ─────────────────────────────────
+
+export interface UserRow {
+  id: string
+  email: string
+  name: string
+  role: string
+  is_active: boolean
+  created_at: string
+}
+
+export async function getAllUsers(): Promise<UserRow[]> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, role, is_active, created_at')
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching users:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function createUser(name: string, email: string, password: string, role: string): Promise<UserRow | null> {
+  const { data, error } = await supabase
+    .rpc('create_user', {
+      input_name: name,
+      input_email: email,
+      input_password: password,
+      input_role: role,
+    })
+
+  if (error) {
+    console.error('Error creating user:', error)
+    throw new Error(error.message)
+  }
+  return data
+}
+
+export async function resetUserPassword(userId: string, newPassword: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .rpc('reset_user_password', {
+      input_user_id: userId,
+      input_new_password: newPassword,
+    })
+
+  if (error) {
+    console.error('Error resetting password:', error)
+    throw new Error(error.message)
+  }
+  return !!data
+}
+
+export async function updateUser(userId: string, fields: { name?: string; email?: string; role?: string }): Promise<boolean> {
+  const { error } = await supabase
+    .from('users')
+    .update(fields)
+    .eq('id', userId)
+
+  if (error) {
+    console.error('Error updating user:', error)
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export async function toggleUserActive(userId: string, isActive: boolean): Promise<boolean> {
+  const { error } = await supabase
+    .from('users')
+    .update({ is_active: isActive })
+    .eq('id', userId)
+
+  if (error) {
+    console.error('Error toggling user:', error)
+    throw new Error(error.message)
+  }
+  return true
+}
 
 // ─── Barcode Alias System ──────────────────────────────────────
 
@@ -51,7 +176,29 @@ export async function getAllBarcodeAliases() {
   return data || []
 }
 
-// ─── Activity Logging ──────────────────────────────────────────
+// ─── Activity Log (Read + Write) ──────────────────────────────
+
+export async function getActivityLogs(limit = 100) {
+  const { data, error } = await supabase
+    .from('activity_log')
+    .select('*, users(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('Error fetching activity logs:', error)
+    return []
+  }
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    action: row.action,
+    entity_type: row.entity_type,
+    entity_id: row.entity_id,
+    details: row.details,
+    user_name: row.users?.name || null,
+    created_at: row.created_at,
+  }))
+}
 
 export async function logActivity(action: string, entityType: string, entityId: string, details?: Record<string, unknown>) {
   const { error } = await supabase
@@ -68,7 +215,21 @@ export async function logActivity(action: string, entityType: string, entityId: 
   }
 }
 
-// ─── Inventory Logs ────────────────────────────────────────────
+// ─── Inventory Logs (Read + Write) ─────────────────────────────
+
+export async function getInventoryLogs(limit = 100) {
+  const { data, error } = await supabase
+    .from('inventory_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('Error fetching inventory logs:', error)
+    return []
+  }
+  return data || []
+}
 
 export async function logInventoryChange(
   productId: string,
@@ -93,9 +254,49 @@ export async function logInventoryChange(
   }
 }
 
+// ─── Barcode Alias Management ──────────────────────────────────
+
+export async function deleteBarcodeAlias(id: string) {
+  const { error } = await supabase
+    .from('barcode_aliases')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error('Error deleting barcode alias:', error)
+    throw error
+  }
+}
+
 // ─── Stores & Orders ───────────────────────────────────────────
 
-// Fetch all stores
+// Fetch all stores (including inactive for admin)
+export async function getAllStores() {
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .order('name')
+
+  if (error) {
+    console.error('Error fetching all stores:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function updateStore(id: string, updates: { name?: string; domain?: string; color?: string; is_active?: boolean }) {
+  const { error } = await supabase
+    .from('stores')
+    .update(updates)
+    .eq('id', id)
+
+  if (error) {
+    console.error('Error updating store:', error)
+    throw error
+  }
+}
+
+// Fetch active stores
 export async function getStores() {
   const { data, error } = await supabase
     .from('stores')
@@ -149,6 +350,57 @@ export async function getOrdersWithDetails() {
   return displayOrders
 }
 
+// Fetch order items for a specific order, with inventory image fallback
+export async function getOrderItemsByOrderId(orderId: string): Promise<OrderItemDisplay[]> {
+  const { data, error } = await supabase
+    .from('order_items')
+    .select('*')
+    .eq('order_id', orderId)
+    .order('product_name')
+
+  if (error) {
+    console.error('Error fetching order items:', error)
+    return []
+  }
+
+  const items = data || []
+  const allSkus = [...new Set(items.map((i) => i.sku))]
+
+  // Always fetch inventory images for all SKUs as fallback
+  let imageMap: Record<string, string> = {}
+  if (allSkus.length > 0) {
+    const { data: invData, error: invError } = await supabase
+      .from('inventory')
+      .select('sku, image_url')
+      .in('sku', allSkus)
+
+    if (invError) {
+      console.error('Error fetching inventory images:', invError)
+    }
+
+    if (invData) {
+      for (const inv of invData) {
+        if (inv.image_url && !imageMap[inv.sku]) {
+          imageMap[inv.sku] = inv.image_url
+        }
+      }
+    }
+  }
+
+  return items.map((item): OrderItemDisplay => ({
+    id: item.id,
+    sku: item.sku,
+    product_name: item.product_name,
+    variant: item.variant,
+    quantity: item.quantity,
+    picked_quantity: item.picked_quantity,
+    is_picked: item.is_picked,
+    location_code: item.location_code,
+    image_url: item.image_url || imageMap[item.sku] || null,
+    order_id: item.order_id,
+  }))
+}
+
 // Update order status
 export async function updateOrderStatus(orderId: string, status: OrderStatus) {
   const updates: any = {
@@ -179,9 +431,46 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus) {
   return data
 }
 
+// ─── Stock Lookup by SKU ─────────────────────────────────────
+
+export async function getInventoryStockBySku(skus: string[]): Promise<Record<string, { quantity: number; threshold: number }>> {
+  if (skus.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('sku, quantity, threshold')
+    .in('sku', skus)
+
+  if (error) {
+    console.error('Error fetching inventory stock:', error)
+    return {}
+  }
+
+  const map: Record<string, { quantity: number; threshold: number }> = {}
+  ;(data || []).forEach((row: any) => {
+    map[row.sku] = { quantity: row.quantity ?? 0, threshold: row.threshold ?? 0 }
+  })
+  return map
+}
+
+// ─── Low Stock Count ─────────────────────────────────────────
+
+export async function getLowStockCount(): Promise<number> {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('id, quantity, threshold')
+
+  if (error) {
+    console.error('Error fetching low stock count:', error)
+    return 0
+  }
+
+  return (data || []).filter(item => item.quantity <= (item.threshold ?? 0)).length
+}
+
 // ─── Orders with Full Items (Pick List, Scanner, Dashboard) ──
 
-function transformOrderWithItems(order: any): PickableOrder {
+function transformOrderWithItems(order: any, locationMap: Map<string, string>): PickableOrder {
   return {
     id: order.id,
     order_number: order.order_number,
@@ -203,26 +492,43 @@ function transformOrderWithItems(order: any): PickableOrder {
       quantity: item.quantity,
       picked_quantity: item.picked_quantity,
       is_picked: item.is_picked,
-      location_code: item.location_code,
+      location_code: locationMap.get(item.sku) || null,
       image_url: item.image_url,
       order_id: item.order_id,
     })),
   }
 }
 
-// Fetch pickable orders (pending/picking) with full items
+async function buildLocationMap(orders: any[]): Promise<Map<string, string>> {
+  const skus = [...new Set(orders.flatMap((o: any) => (o.order_items || []).map((i: any) => i.sku)))];
+  if (skus.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from('inventory')
+    .select('sku, location_code')
+    .in('sku', skus)
+
+  const map = new Map<string, string>();
+  (data || []).forEach((row: any) => {
+    if (row.location_code) map.set(row.sku, row.location_code);
+  });
+  return map;
+}
+
+// Fetch pickable orders (only 'picking' status — must click "Go Pick" first)
 export async function getPickableOrdersWithItems(): Promise<PickableOrder[]> {
   const { data, error } = await supabase
     .from('orders')
     .select(`*, stores (name, color), clients (name, color), order_items (*)`)
-    .in('status', ['pending', 'picking'])
+    .eq('status', 'picking')
     .order('created_at', { ascending: false })
 
   if (error) {
     console.error('Error fetching pickable orders:', error)
     return []
   }
-  return (data || []).map(transformOrderWithItems)
+  const locationMap = await buildLocationMap(data || []);
+  return (data || []).map(o => transformOrderWithItems(o, locationMap))
 }
 
 // Fetch ALL orders with full items (for dashboard)
@@ -236,7 +542,8 @@ export async function getAllOrdersWithItems(): Promise<PickableOrder[]> {
     console.error('Error fetching all orders:', error)
     return []
   }
-  return (data || []).map(transformOrderWithItems)
+  const locationMap = await buildLocationMap(data || []);
+  return (data || []).map(o => transformOrderWithItems(o, locationMap))
 }
 
 // ─── Pick Confirmation (write-back) ──────────────────────────
@@ -255,6 +562,50 @@ export async function markItemPicked(itemId: string, pickedQuantity: number) {
     console.error('Error marking item picked:', error)
     throw error
   }
+}
+
+// ─── Inventory Deduction on Pick ─────────────────────────────
+
+export async function deductInventoryForPick(sku: string, quantityPicked: number): Promise<{ outOfStock: boolean; sku: string }> {
+  // Find the inventory row by SKU
+  const { data: inv, error: lookupError } = await supabase
+    .from('inventory')
+    .select('id, quantity')
+    .eq('sku', sku)
+    .limit(1)
+    .single()
+
+  if (lookupError || !inv) {
+    console.warn(`No inventory found for SKU ${sku}, skipping deduction`)
+    return { outOfStock: false, sku }
+  }
+
+  if (inv.quantity <= 0) {
+    return { outOfStock: true, sku }
+  }
+
+  const previousQty = inv.quantity
+  const newQty = Math.max(0, previousQty - quantityPicked)
+
+  const { error: updateError } = await supabase
+    .from('inventory')
+    .update({ quantity: newQty, last_updated: new Date().toISOString() })
+    .eq('id', inv.id)
+
+  if (updateError) {
+    console.error('Error deducting inventory for pick:', updateError)
+    return { outOfStock: false, sku }
+  }
+
+  await logInventoryChange(
+    inv.id,
+    'picked',
+    -quantityPicked,
+    previousQty,
+    `Picked ${quantityPicked} unit(s)`
+  )
+
+  return { outOfStock: newQty <= 0, sku }
 }
 
 // ─── Carryover Detection ─────────────────────────────────────
@@ -284,7 +635,7 @@ export async function getPendingPickCount(): Promise<number> {
   const { count, error } = await supabase
     .from('orders')
     .select('id', { count: 'exact', head: true })
-    .in('status', ['pending', 'picking'])
+    .eq('status', 'picking')
 
   if (error) {
     console.error('Error getting pending pick count:', error)
@@ -296,10 +647,10 @@ export async function getPendingPickCount(): Promise<number> {
 // ─── Inventory CRUD ──────────────────────────────────────────
 
 // Lightweight inventory fetch for product dropdowns in manual entry
-export async function getInventoryProducts(): Promise<{ sku: string; product_name: string; variant: string | null }[]> {
+export async function getInventoryProducts(): Promise<{ sku: string; product_name: string; variant: string | null; client_id: string | null }[]> {
   const { data, error } = await supabase
     .from('inventory')
-    .select('sku, product_name, variant')
+    .select('sku, product_name, variant, client_id')
     .order('product_name')
 
   if (error) {
@@ -460,7 +811,7 @@ export async function createInventoryItem(item: {
 export async function getClients(): Promise<ClientDisplay[]> {
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, color, contact_name, contact_email')
+    .select('id, name, color, contact_name, contact_email, notes')
     .order('name')
 
   if (error) {
@@ -468,6 +819,45 @@ export async function getClients(): Promise<ClientDisplay[]> {
     return []
   }
   return data || []
+}
+
+export async function createClient(fields: {
+  name: string
+  color?: string
+  contact_name?: string
+  contact_email?: string
+  notes?: string
+}): Promise<ClientDisplay> {
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({
+      name: fields.name,
+      color: fields.color || null,
+      contact_name: fields.contact_name || null,
+      contact_email: fields.contact_email || null,
+      notes: fields.notes || null,
+    })
+    .select('id, name, color, contact_name, contact_email, notes')
+    .single()
+
+  if (error) {
+    console.error('Error creating client:', error)
+    throw new Error(error.message)
+  }
+  return data
+}
+
+export async function deleteClient(clientId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('clients')
+    .delete()
+    .eq('id', clientId)
+
+  if (error) {
+    console.error('Error deleting client:', error)
+    throw new Error(error.message)
+  }
+  return true
 }
 
 // ─── Receiving ───────────────────────────────────────────────
@@ -573,14 +963,10 @@ export async function getReceivingReceiptWithItems(receiptId: string): Promise<R
 }
 
 export async function getCompletedReceipts(): Promise<ReceivingReceiptDisplay[]> {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
   const { data, error } = await supabase
     .from('receiving_receipts')
     .select(`*, clients (name, color), receiving_items (*)`)
     .eq('status', 'completed')
-    .gte('completed_at', today.toISOString())
     .order('completed_at', { ascending: false })
 
   if (error) {

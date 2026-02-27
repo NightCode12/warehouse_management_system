@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { ClipboardList, Clock, ChevronDown, ChevronRight, Package, MapPin } from 'lucide-react';
+import { ClipboardList, Clock, ChevronDown, ChevronRight, Package, MapPin, Calendar } from 'lucide-react';
 import { InventoryDisplay, ClientDisplay, ReceivingReceiptDisplay } from '@/types';
 import {
   createReceivingReceipt,
@@ -14,13 +14,16 @@ import {
 import ClientSelector from './ClientSelector';
 import ItemEntryForm from './ItemEntryForm';
 import ReceiptSummary from './ReceiptSummary';
+import Pagination, { usePagination } from '@/components/ui/Pagination';
 
 interface ReceivingViewProps {
   inventory: InventoryDisplay[];
   setInventory: React.Dispatch<React.SetStateAction<InventoryDisplay[]>>;
   clients: ClientDisplay[];
+  setClients: React.Dispatch<React.SetStateAction<ClientDisplay[]>>;
   completedReceipts: ReceivingReceiptDisplay[];
   setCompletedReceipts: React.Dispatch<React.SetStateAction<ReceivingReceiptDisplay[]>>;
+  canManageClients?: boolean;
 }
 
 let receiptCounter = 1;
@@ -36,12 +39,17 @@ export default function ReceivingView({
   inventory,
   setInventory,
   clients,
+  setClients,
   completedReceipts,
   setCompletedReceipts,
+  canManageClients = true,
 }: ReceivingViewProps) {
   const [activeReceipt, setActiveReceipt] = useState<ReceivingReceiptDisplay | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [expandedReceiptId, setExpandedReceiptId] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   const startSession = useCallback(async (client: ClientDisplay) => {
     const refNumber = generateReceiptNumber();
@@ -175,18 +183,68 @@ export default function ReceivingView({
     setExpandedReceiptId(prev => (prev === receiptId ? null : receiptId));
   };
 
+  const getDateRange = (): { from: Date | null; to: Date | null } => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (dateFilter) {
+      case 'today':
+        return { from: startOfDay, to: null };
+      case 'week': {
+        const d = new Date(startOfDay);
+        d.setDate(d.getDate() - 7);
+        return { from: d, to: null };
+      }
+      case 'month': {
+        const d = new Date(startOfDay);
+        d.setMonth(d.getMonth() - 1);
+        return { from: d, to: null };
+      }
+      case 'year': {
+        const d = new Date(startOfDay);
+        d.setFullYear(d.getFullYear() - 1);
+        return { from: d, to: null };
+      }
+      case 'custom': {
+        const from = customFrom ? new Date(customFrom + 'T00:00:00') : null;
+        const to = customTo ? new Date(customTo + 'T23:59:59') : null;
+        return { from, to };
+      }
+      default:
+        return { from: null, to: null };
+    }
+  };
+
+  const filteredReceipts = completedReceipts.filter((receipt) => {
+    if (dateFilter === 'all') return true;
+    const { from, to } = getDateRange();
+    const receiptDate = receipt.completed_at ? new Date(receipt.completed_at) : null;
+    if (!receiptDate) return false;
+    if (from && receiptDate < from) return false;
+    if (to && receiptDate > to) return false;
+    return true;
+  });
+
+  const {
+    paginatedItems: paginatedReceipts,
+    currentPage,
+    totalPages,
+    totalItems,
+    pageSize,
+    setCurrentPage,
+  } = usePagination(filteredReceipts, 10);
+
   // Find active client display for ItemEntryForm
   const activeClient = clients.find(c => c.id === activeClientId);
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Receive Inventory</h2>
+    <div className="p-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Receive Inventory</h2>
         {activeReceipt && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm font-medium text-emerald-700">
+              <span className="text-xs sm:text-sm font-medium text-emerald-700">
                 Session active &bull; {activeReceipt.reference_number}
               </span>
             </div>
@@ -201,17 +259,23 @@ export default function ReceivingView({
       </div>
 
       {!activeReceipt ? (
-        <ClientSelector clients={clients} onSelectClient={startSession} />
+        <ClientSelector
+          clients={clients}
+          onSelectClient={startSession}
+          onClientAdded={(client) => setClients(prev => [...prev, client].sort((a, b) => a.name.localeCompare(b.name)))}
+          onClientDeleted={(id) => setClients(prev => prev.filter(c => c.id !== id))}
+          canManageClients={canManageClients}
+        />
       ) : activeClient ? (
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          <div className="lg:col-span-1">
             <ItemEntryForm
               inventory={inventory}
               client={activeClient}
               onAddItem={handleAddItem}
             />
           </div>
-          <div className="col-span-2">
+          <div className="lg:col-span-2">
             <ReceiptSummary
               receipt={activeReceipt}
               onRemoveItem={handleRemoveItem}
@@ -225,12 +289,65 @@ export default function ReceivingView({
       {/* Completed Receipts History */}
       {completedReceipts.length > 0 && (
         <div className="mt-8">
-          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-700 mb-4">
-            <Clock className="w-5 h-5 text-slate-400" />
-            Completed Receipts
-          </h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h3 className="flex items-center gap-2 text-base sm:text-lg font-semibold text-slate-700">
+              <Clock className="w-5 h-5 text-slate-400" />
+              Completed Receipts
+            </h3>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 30 Days</option>
+                  <option value="year">Last Year</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+              <span className="text-sm text-slate-400">{filteredReceipts.length} receipts</span>
+            </div>
+          </div>
+
+          {dateFilter === 'custom' && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+              <label className="text-sm text-slate-600">From:</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <label className="text-sm text-slate-600">To:</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                  className="text-xs text-slate-500 hover:text-slate-700 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+
+          {filteredReceipts.length === 0 ? (
+            <div className="text-center text-slate-400 py-8 bg-white rounded-xl border border-slate-200">
+              No receipts found for the selected period.
+            </div>
+          ) : (
           <div className="space-y-3">
-            {completedReceipts.map(receipt => {
+            {paginatedReceipts.map(receipt => {
               const isExpanded = expandedReceiptId === receipt.id;
               const totalUnits = receipt.items.reduce((s, i) => s + i.quantity_received, 0);
 
@@ -242,23 +359,23 @@ export default function ReceivingView({
                   {/* Receipt header row — clickable */}
                   <button
                     onClick={() => toggleReceiptExpand(receipt.id)}
-                    className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                    className="w-full px-3 sm:px-5 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 hover:bg-slate-50 transition-colors text-left"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                       ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                       )}
-                      <div className="flex items-center gap-2">
-                        <ClipboardList className="w-4 h-4 text-slate-400" />
-                        <span className="font-mono text-sm font-medium text-slate-700">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ClipboardList className="w-4 h-4 text-slate-400 shrink-0 hidden sm:block" />
+                        <span className="font-mono text-xs sm:text-sm font-medium text-slate-700 truncate">
                           {receipt.reference_number}
                         </span>
                       </div>
                       {receipt.client_name && (
                         <div
-                          className="px-2 py-0.5 rounded text-xs font-medium"
+                          className="px-2 py-0.5 rounded text-xs font-medium shrink-0"
                           style={{
                             backgroundColor: (receipt.client_color || '#999') + '20',
                             color: receipt.client_color || '#999',
@@ -268,7 +385,7 @@ export default function ReceivingView({
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-6 text-sm text-slate-500">
+                    <div className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm text-slate-500 pl-6 sm:pl-0">
                       <span>{receipt.items.length} items</span>
                       <span>{totalUnits} units</span>
                       <span>
@@ -284,8 +401,8 @@ export default function ReceivingView({
 
                   {/* Expanded detail */}
                   {isExpanded && (
-                    <div className="border-t border-slate-100 px-5 pb-4">
-                      <table className="w-full text-sm mt-3">
+                    <div className="border-t border-slate-100 px-3 sm:px-5 pb-4 overflow-x-auto">
+                      <table className="w-full text-sm mt-3 min-w-125">
                         <thead>
                           <tr className="text-left text-slate-400 text-xs uppercase tracking-wide">
                             <th className="pb-2 font-medium">SKU</th>
@@ -347,6 +464,15 @@ export default function ReceivingView({
               );
             })}
           </div>
+          )}
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            totalItems={totalItems}
+            pageSize={pageSize}
+          />
         </div>
       )}
     </div>

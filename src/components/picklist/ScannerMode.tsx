@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, CheckCircle, MapPin, Camera, Keyboard, AlertTriangle, Volume2, VolumeX, SwitchCamera, SkipForward, ChevronRight } from 'lucide-react';
+import { X, CheckCircle, MapPin, Camera, Keyboard, AlertTriangle, Volume2, VolumeX, SwitchCamera, SkipForward, ChevronRight, Bluetooth, ScanLine } from 'lucide-react';
 import { PickableOrder, OrderItemDisplay } from '@/types';
 import ProductImage from '@/components/ui/ProductImage';
 import { getAllBarcodeAliases } from '@/lib/supabase/queries';
@@ -60,7 +60,7 @@ function CameraScanner({ onScan }: { onScan: (value: string) => void }) {
 
     const startScanner = async () => {
       try {
-        const { Html5Qrcode } = await import('html5-qrcode');
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
         const devices = await Html5Qrcode.getCameras();
         if (!mounted) return;
 
@@ -70,7 +70,20 @@ function CameraScanner({ onScan }: { onScan: (value: string) => void }) {
         }
 
         setCameras(devices);
-        const scanner = new Html5Qrcode(scannerId);
+        const scanner = new Html5Qrcode(scannerId, {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,  // most warehouse/shipping barcodes
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.EAN_13,    // retail product barcodes
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+          ],
+          verbose: false,
+        });
         scannerRef.current = scanner;
 
         const cameraId = devices[activeCameraIndex]?.id || devices[0].id;
@@ -210,7 +223,7 @@ function ItemChecklist({ items, scannedItems, currentItemIndex }: {
 export default function ScannerMode({ order, onClose, onComplete }: ScannerModeProps) {
   const [scannedItems, setScannedItems] = useState<Map<number, ScannedItem>>(new Map());
   const [manualInput, setManualInput] = useState('');
-  const [inputMode, setInputMode] = useState<'camera' | 'manual'>('manual');
+  const [inputMode, setInputMode] = useState<'camera' | 'manual' | 'bluetooth'>('bluetooth');
   const [lastScanResult, setLastScanResult] = useState<{ success: boolean; message: string } | null>(null);
   const [flashColor, setFlashColor] = useState<'green' | 'red' | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -239,16 +252,9 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
   const currentItemIndex = order.items.findIndex((_, idx) => !scannedItems.has(idx));
   const currentItem = currentItemIndex >= 0 ? order.items[currentItemIndex] : null;
 
-  // Auto-switch to manual when all items are scanned
+  // Keep input focused in manual and bluetooth modes (Bluetooth scanner needs a focused input to type into)
   useEffect(() => {
-    if (allScanned && inputMode === 'camera') {
-      setInputMode('manual');
-    }
-  }, [allScanned, inputMode]);
-
-  // Keep manual input focused
-  useEffect(() => {
-    if (inputMode !== 'manual') return;
+    if (inputMode !== 'manual' && inputMode !== 'bluetooth') return;
     const interval = setInterval(() => {
       if (inputRef.current && document.activeElement !== inputRef.current) {
         inputRef.current.focus();
@@ -374,22 +380,22 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
       `}</style>
 
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 shrink-0">
-        <div>
-          <h2 className="text-lg font-black tracking-tight flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 border-b border-white/10 shrink-0">
+        <div className="min-w-0">
+          <h2 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2 flex-wrap">
             SCANNER MODE
             <span className="text-sm font-medium text-slate-400">— {order.order_number}</span>
           </h2>
-          <div className="flex items-center gap-3 mt-0.5">
-            <span className="text-sm text-slate-400">{order.customer_name}</span>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-sm text-slate-400 truncate max-w-[120px] sm:max-w-none">{order.customer_name}</span>
             <div
-              className="px-2 py-0.5 rounded-full text-xs font-medium"
+              className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
               style={{ backgroundColor: order.store_color + '40', color: '#fff' }}
             >
               {order.store_name}
             </div>
             {order.priority !== 'normal' && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${
                 order.priority === 'same-day' ? 'bg-red-500' : 'bg-orange-500'
               }`}>
                 {order.priority === 'same-day' ? 'SAME DAY' : 'RUSH'}
@@ -397,7 +403,7 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className={`p-2 rounded-lg transition-colors ${
@@ -407,24 +413,33 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
           >
             {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
           </button>
-          <div className="flex items-center gap-1 bg-white/10 rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-white/10 rounded-lg p-0.5">
+            <button
+              onClick={() => setInputMode('bluetooth')}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                inputMode === 'bluetooth' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Bluetooth className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Bluetooth</span>
+            </button>
             <button
               onClick={() => setInputMode('camera')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                 inputMode === 'camera' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
               <Camera className="w-3.5 h-3.5" />
-              Camera
+              <span className="hidden sm:inline">Camera</span>
             </button>
             <button
               onClick={() => setInputMode('manual')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                 inputMode === 'manual' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
               <Keyboard className="w-3.5 h-3.5" />
-              Manual
+              <span className="hidden sm:inline">Manual</span>
             </button>
           </div>
           <button
@@ -470,13 +485,113 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
         </div>
       )}
 
-      {/* Main Content — different layout for camera vs manual */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Main Content — different layout per mode */}
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
 
-        {inputMode === 'camera' ? (
+        {inputMode === 'bluetooth' ? (
+          <>
+            {/* Left: Bluetooth ready panel */}
+            <div className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-white/10 min-h-0">
+              {currentItem ? (
+                <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start md:justify-center p-3 md:p-6 gap-4 md:gap-6">
+
+                  {/* Ready indicator — row on mobile, column on tablet+ */}
+                  <div className="flex flex-row md:flex-col items-center gap-3 md:gap-3 w-full md:w-auto">
+                    <div
+                      className="w-14 h-14 md:w-20 md:h-20 rounded-full bg-blue-500/20 border-2 border-blue-500/40 flex items-center justify-center shrink-0"
+                      style={{ animation: 'pulse-ring 2s ease-in-out infinite' }}
+                    >
+                      <ScanLine className="w-6 h-6 md:w-9 md:h-9 text-blue-400" />
+                    </div>
+                    <div className="text-left md:text-center">
+                      <p className="text-blue-300 font-bold text-sm uppercase tracking-widest">Ready to Scan</p>
+                      <p className="text-slate-500 text-xs mt-0.5">Point your Bluetooth scanner at the barcode</p>
+                    </div>
+                  </div>
+
+                  {/* Current item card */}
+                  <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500/15 border-b border-blue-500/20">
+                      <MapPin className="w-4 h-4 md:w-5 md:h-5 text-blue-400" />
+                      <span className="text-xl md:text-2xl font-mono font-black text-blue-300">{currentItem.location_code || '—'}</span>
+                    </div>
+                    <div className="px-4 py-4 md:px-5 md:py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="shrink-0">
+                          <ProductImage sku={currentItem.sku} name={currentItem.product_name} size="lg" editable={false} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base md:text-lg font-bold text-white leading-tight">{currentItem.product_name}</h3>
+                          <p className="text-sm text-slate-400 mt-0.5">{currentItem.variant || ''}</p>
+                          <p className="text-xs font-mono text-slate-500 mt-1">{currentItem.sku}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-xs text-slate-400 uppercase tracking-wider">Pick</div>
+                          <div className="text-4xl md:text-5xl font-black text-emerald-400">{currentItem.quantity}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t border-white/10 px-4 py-2">
+                      <button
+                        onClick={handleManualOverride}
+                        className="flex items-center gap-2 mx-auto px-4 py-1.5 text-xs text-slate-500 hover:text-amber-400 hover:bg-white/5 rounded-lg transition-colors"
+                      >
+                        <SkipForward className="w-3.5 h-3.5" />
+                        Manual Override (skip scan)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-white mb-2">All Items Scanned</h3>
+                    <p className="text-slate-400">Click Complete Pick to finish.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Input — stays focused so Bluetooth scanner can type into it */}
+              <div className="px-4 py-3 border-t border-white/10 shrink-0">
+                <form onSubmit={handleManualSubmit} className="flex items-center gap-2">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    autoFocus
+                    aria-label="Bluetooth scanner input"
+                    className="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-sm font-mono text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white/15 transition-all text-center"
+                    placeholder="Waiting for scanner input..."
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition-colors shrink-0"
+                  >
+                    Enter
+                  </button>
+                </form>
+                <p className="text-center text-xs text-slate-500 mt-1.5">
+                  Works with Eyoyo, Tera, Inateck, and any Bluetooth HID barcode scanner
+                </p>
+              </div>
+            </div>
+
+            {/* Right: Item checklist */}
+            <div className="w-full md:w-72 flex flex-col bg-slate-900/50 max-h-44 md:max-h-none">
+              <div className="px-4 py-2.5 border-b border-white/10 shrink-0">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Items to Pick ({scannedCount}/{totalItems})
+                </h4>
+              </div>
+              <ItemChecklist items={order.items} scannedItems={scannedItems} currentItemIndex={currentItemIndex} />
+            </div>
+          </>
+        ) : inputMode === 'camera' ? (
           <>
             {/* Left: Camera feed (large) */}
-            <div className="flex-1 flex flex-col border-r border-white/10">
+            <div className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-white/10">
               <CameraScanner onScan={handleScan} />
 
               {/* Current item compact info below camera */}
@@ -503,7 +618,7 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
             </div>
 
             {/* Right: Item checklist */}
-            <div className="w-72 flex flex-col bg-slate-900/50">
+            <div className="w-full md:w-72 flex flex-col bg-slate-900/50 max-h-44 md:max-h-none">
               <div className="px-4 py-2.5 border-b border-white/10 shrink-0">
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Items to Pick ({scannedCount}/{totalItems})
@@ -515,38 +630,36 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
         ) : (
           <>
             {/* Left: Current item focus + manual input */}
-            <div className="flex-1 flex flex-col border-r border-white/10">
+            <div className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-white/10">
               {currentItem ? (
-                <div className="flex-1 flex items-center justify-center p-6">
+                <div className="flex-1 flex items-start md:items-center justify-center p-3 md:p-6 overflow-y-auto">
                   <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
                     {/* Location header */}
-                    <div className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/15 border-b border-blue-500/20">
-                      <MapPin className="w-5 h-5 text-blue-400" />
-                      <span className="text-2xl font-mono font-black text-blue-300">{currentItem.location_code || '—'}</span>
+                    <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500/15 border-b border-blue-500/20">
+                      <MapPin className="w-4 h-4 md:w-5 md:h-5 text-blue-400" />
+                      <span className="text-xl md:text-2xl font-mono font-black text-blue-300">{currentItem.location_code || '—'}</span>
                     </div>
 
                     {/* Product details */}
-                    <div className="px-5 py-5">
-                      <div className="flex items-start gap-4">
+                    <div className="px-4 py-4 md:px-5 md:py-5">
+                      <div className="flex items-center gap-3">
                         <div className="shrink-0">
                           <ProductImage sku={currentItem.sku} name={currentItem.product_name} size="lg" editable={false} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-bold text-white leading-tight">{currentItem.product_name}</h3>
+                          <h3 className="text-base md:text-lg font-bold text-white leading-tight">{currentItem.product_name}</h3>
                           <p className="text-sm text-slate-400 mt-0.5">{currentItem.variant || ''}</p>
                           <p className="text-xs font-mono text-slate-500 mt-1">{currentItem.sku}</p>
                         </div>
-                      </div>
-
-                      {/* Quantity — prominent */}
-                      <div className="flex items-center justify-center gap-3 mt-5 py-3 bg-white/5 rounded-xl">
-                        <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">Pick</span>
-                        <span className="text-5xl font-black text-emerald-400">{currentItem.quantity}</span>
+                        <div className="shrink-0 text-right">
+                          <div className="text-xs text-slate-400 uppercase tracking-wider">Pick</div>
+                          <div className="text-4xl md:text-5xl font-black text-emerald-400">{currentItem.quantity}</div>
+                        </div>
                       </div>
                     </div>
 
                     {/* Manual override footer */}
-                    <div className="border-t border-white/10 px-4 py-2.5">
+                    <div className="border-t border-white/10 px-4 py-2">
                       <button
                         onClick={handleManualOverride}
                         className="flex items-center gap-2 mx-auto px-4 py-1.5 text-xs text-slate-500 hover:text-amber-400 hover:bg-white/5 rounded-lg transition-colors"
@@ -590,7 +703,7 @@ export default function ScannerMode({ order, onClose, onComplete }: ScannerModeP
             </div>
 
             {/* Right: Item checklist */}
-            <div className="w-72 flex flex-col bg-slate-900/50">
+            <div className="w-full md:w-72 flex flex-col bg-slate-900/50 max-h-44 md:max-h-none">
               <div className="px-4 py-2.5 border-b border-white/10 shrink-0">
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Items to Pick ({scannedCount}/{totalItems})

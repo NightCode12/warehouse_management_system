@@ -4,11 +4,17 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import PickListView from '@/components/picklist/PickListView';
 import { getPickableOrdersWithItems, markCarryoverOrders } from '@/lib/supabase/queries';
+import { usePickCount } from '@/lib/PickCountContext';
+import { useAuth } from '@/lib/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { PickableOrder } from '@/types';
 
 export default function PicklistPage() {
   const [orders, setOrders] = useState<PickableOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const { refreshCount } = usePickCount();
+  const { user } = useAuth();
+  const canPick = user ? hasPermission(user.role, 'picklist:pick') : false;
 
   useEffect(() => {
     const load = async () => {
@@ -17,6 +23,7 @@ export default function PicklistPage() {
       const data = await getPickableOrdersWithItems();
       setOrders(data);
       setLoading(false);
+      refreshCount();
     };
     load();
   }, []);
@@ -33,7 +40,7 @@ export default function PicklistPage() {
 
   return (
     <AppShell>
-      <PickListView orders={orders} />
+      <PickListView orders={orders} readOnly={!canPick} />
     </AppShell>
   );
 }

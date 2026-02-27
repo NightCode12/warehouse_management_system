@@ -5,7 +5,8 @@ import { OrderDisplay, OrderStatus } from '@/types'
 
 interface OrderTableProps {
   orders: OrderDisplay[]
-  onStatusChange: (orderId: string, newStatus: string) => void
+  onStatusChange?: (orderId: string, newStatus: string) => void
+  onViewItems: (order: OrderDisplay) => void
 }
 
 const statusStyles: Record<OrderStatus, string> = {
@@ -45,12 +46,12 @@ function formatInHandsDate(dateStr: string | null): { text: string; urgent: bool
   return { text, urgent: diffDays <= 2 }
 }
 
-export default function OrderTable({ orders, onStatusChange }: OrderTableProps) {
+export default function OrderTable({ orders, onStatusChange, onViewItems }: OrderTableProps) {
   if (orders.length === 0) return null
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <table className="w-full">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <table className="w-full min-w-175">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th>
@@ -59,7 +60,7 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">In-Hands</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+            {onStatusChange && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -106,7 +107,12 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                 </td>
                 <td className="px-4 py-4 text-sm text-slate-600">{order.customer_name}</td>
                 <td className="px-4 py-4">
-                  <span className="text-sm text-slate-600">{order.item_count} items</span>
+                  <button
+                    onClick={() => onViewItems(order)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline transition-colors"
+                  >
+                    {order.item_count} items
+                  </button>
                 </td>
                 <td className="px-4 py-4">
                   {inHands ? (
@@ -136,6 +142,7 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                     )}
                   </div>
                 </td>
+                {onStatusChange && (
                 <td className="px-4 py-4">
                   {(order.status === 'pending' || order.status === 'picking') ? (
                     <button
@@ -153,6 +160,7 @@ export default function OrderTable({ orders, onStatusChange }: OrderTableProps) 
                     </button>
                   )}
                 </td>
+                )}
               </tr>
             )
           })}
