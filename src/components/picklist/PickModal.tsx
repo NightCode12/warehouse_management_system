@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { X, CheckCircle, MapPin, ArrowLeft, Package } from 'lucide-react';
+import { X, CheckCircle, MapPin, ArrowLeft, Package, AlertTriangle } from 'lucide-react';
 import { PickableOrder } from '@/types';
 import ProductImage from '@/components/ui/ProductImage';
+import { getInventoryStockBySku } from '@/lib/supabase/queries';
 
 interface PickModalProps {
   order: PickableOrder;
@@ -14,6 +15,8 @@ interface PickModalProps {
 export default function PickModal({ order, onClose, onSubmit }: PickModalProps) {
   const [pickedItems, setPickedItems] = useState<Record<number, boolean>>({});
   const [phase, setPhase] = useState<'picking' | 'review'>('picking');
+  const [oosError, setOosError] = useState<string[] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const totalItems = order.items.length;
   const pickedCount = Object.values(pickedItems).filter(Boolean).length;
@@ -24,8 +27,30 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
     setPickedItems(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    setOosError(null);
+    setSubmitting(true);
+
+    // Check stock before submitting
+    const skus = order.items.map(i => i.sku);
+    const stock = await getInventoryStockBySku(skus);
+    const oosItems = order.items.filter(item => {
+      const s = stock[item.sku];
+      return !s || s.quantity < item.quantity;
+    });
+
+    if (oosItems.length > 0) {
+      setOosError(oosItems.map(i => {
+        const s = stock[i.sku];
+        const available = s ? s.quantity : 0;
+        return `${i.product_name} (${i.sku}) — need ${i.quantity}, only ${available} in stock`;
+      }));
+      setSubmitting(false);
+      return;
+    }
+
     onSubmit(order.id);
+    setSubmitting(false);
   };
 
   return (
@@ -161,6 +186,20 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
           </>
         ) : (
           <>
+            {/* Out of Stock Alert */}
+            {oosError && (
+              <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-800">Cannot Pick — Insufficient Stock</p>
+                  <p className="text-sm text-red-700">
+                    {oosError.map((msg, i) => <span key={i} className="block">{msg}</span>)}
+                    <span className="block mt-1 font-medium">Restock before picking.</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Review Summary */}
             <div className="px-6 py-4 bg-emerald-50 border-b border-emerald-200">
               <div className="flex items-center gap-3">
@@ -224,10 +263,11 @@ export default function PickModal({ order, onClose, onSubmit }: PickModalProps) 
               </button>
               <button
                 onClick={handleSubmit}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors font-medium text-sm"
+                disabled={submitting}
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="w-4 h-4" />
-                Submit Pick
+                {submitting ? 'Checking stock...' : 'Submit Pick'}
               </button>
             </div>
           </>

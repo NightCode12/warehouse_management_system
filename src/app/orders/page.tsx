@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import TopBar from '@/components/layout/TopBar'
 import OrderTable from '@/components/orders/OrderTable'
+import OrderItemsModal from '@/components/orders/OrderItemsModal'
+import Pagination, { usePagination } from '@/components/ui/Pagination'
 import { getOrdersWithDetails, getStores, updateOrderStatus } from '@/lib/supabase/queries'
+import { usePickCount } from '@/lib/PickCountContext'
+import { useAuth } from '@/lib/AuthContext'
+import { hasPermission } from '@/lib/permissions'
 import { OrderDisplay, OrderStatus, Store } from '@/types'
 
 export default function OrdersPage() {
@@ -14,6 +19,10 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
   const [storeFilter, setStoreFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedOrder, setSelectedOrder] = useState<OrderDisplay | null>(null)
+  const { refreshCount } = usePickCount()
+  const { user } = useAuth()
+  const canEditStatus = user ? hasPermission(user.role, 'orders:edit_status') : false
 
   // Load data on mount
   useEffect(() => {
@@ -48,11 +57,12 @@ export default function OrdersPage() {
     return matchesStatus && matchesStore && matchesSearch
   })
 
+  const { paginatedItems: paginatedOrders, currentPage, totalPages, totalItems, pageSize, setCurrentPage } = usePagination(filteredOrders, 10)
+
   // Status counts
   const statusCounts = {
     all: orders.length,
     pending: orders.filter((o) => o.status === 'pending').length,
-    picking: orders.filter((o) => o.status === 'picking').length,
     picked: orders.filter((o) => o.status === 'picked').length,
     packed: orders.filter((o) => o.status === 'packed').length,
     shipped: orders.filter((o) => o.status === 'shipped').length,
@@ -62,13 +72,16 @@ export default function OrdersPage() {
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
       await updateOrderStatus(orderId, newStatus as OrderStatus)
-      
+
       // Update local state
       setOrders(prevOrders =>
         prevOrders.map((order) =>
           order.id === orderId ? { ...order, status: newStatus as OrderStatus } : order
         )
       )
+
+      // Refresh sidebar pick count badge
+      refreshCount()
     } catch (error) {
       console.error('Failed to update order status:', error)
       alert('Failed to update order status. Please try again.')
@@ -90,21 +103,21 @@ export default function OrdersPage() {
     <AppShell>
       <TopBar title="Orders" />
 
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Status Tabs */}
-        <div className="mb-6 flex gap-2 border-b border-gray-200">
-          {(['all', 'pending', 'picking', 'picked', 'packed', 'shipped'] as const).map((status) => (
+        <div className="mb-4 sm:mb-6 flex gap-2 border-b border-gray-200 overflow-x-auto">
+          {(['all', 'pending', 'picked', 'packed', 'shipped'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              className={`border-b-2 px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
                 statusFilter === status
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               {status.charAt(0).toUpperCase() + status.slice(1)}
-              <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+              <span className="ml-1.5 sm:ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs">
                 {statusCounts[status]}
               </span>
             </button>
@@ -112,7 +125,7 @@ export default function OrdersPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-6 flex gap-4">
+        <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
           <input
             type="text"
             placeholder="Search by order # or customer..."
@@ -121,29 +134,39 @@ export default function OrdersPage() {
             className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
 
-          <select
-            value={storeFilter}
-            onChange={(e) => setStoreFilter(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="all">All Stores</option>
-            {stores.map((store) => (
-              <option key={store.id} value={store.name}>
-                {store.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-3">
+            <select
+              value={storeFilter}
+              onChange={(e) => setStoreFilter(e.target.value)}
+              className="flex-1 sm:flex-none rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="all">All Stores</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.name}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
 
-          <button
-            onClick={loadData}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-700 font-medium hover:bg-slate-50"
-          >
-            🔄 Refresh
-          </button>
+            <button
+              onClick={loadData}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-700 font-medium hover:bg-slate-50 whitespace-nowrap"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Orders Table */}
-        <OrderTable orders={filteredOrders} onStatusChange={handleStatusChange} />
+        <OrderTable orders={paginatedOrders} onStatusChange={canEditStatus ? handleStatusChange : undefined} onViewItems={setSelectedOrder} />
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          pageSize={pageSize}
+        />
 
         {filteredOrders.length === 0 && !loading && (
           <div className="mt-8 text-center text-gray-500">
@@ -158,6 +181,13 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+
+      {selectedOrder && (
+        <OrderItemsModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+        />
+      )}
     </AppShell>
   )
 }

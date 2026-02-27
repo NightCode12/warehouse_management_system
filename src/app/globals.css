@@ -13,6 +13,11 @@
 }
 
 
+/* Hide Edge's built-in password reveal button (we have our own) */
+input[type="password"]::-ms-reveal {
+  display: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

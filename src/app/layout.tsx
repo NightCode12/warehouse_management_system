@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/AuthContext";
 import { ProductImageProvider } from "@/lib/ProductImageContext";
 import { PickCountProvider } from "@/lib/PickCountContext";
+import { LowStockProvider } from "@/lib/LowStockContext";
 
 export const metadata: Metadata = {
   title: "A-Best Swag WMS",
@@ -16,11 +18,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <ProductImageProvider>
-          <PickCountProvider>
-            {children}
-          </PickCountProvider>
-        </ProductImageProvider>
+        <AuthProvider>
+          <ProductImageProvider>
+            <PickCountProvider>
+              <LowStockProvider>
+                {children}
+              </LowStockProvider>
+            </PickCountProvider>
+          </ProductImageProvider>
+        </AuthProvider>
       </body>
     </html>
   );

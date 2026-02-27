@@ -13,6 +13,15 @@ export type Inventory = Tables<'inventory'>
 export type BarcodeAlias = Tables<'barcode_aliases'>
 export type Location = Tables<'locations'>
 
+// Auth user (for login context)
+export type UserRole = 'admin' | 'picker' | 'viewer'
+export interface AppUser {
+  id: string
+  email: string
+  name: string
+  role: UserRole
+}
+
 // Status and priority are stored as strings in DB (not enums)
 // So we'll define them manually
 export type OrderStatus = 'pending' | 'picking' | 'picked' | 'packed' | 'shipped' | 'cancelled'
@@ -102,6 +111,7 @@ export interface ClientDisplay {
   color: string | null
   contact_name: string | null
   contact_email: string | null
+  notes: string | null
 }
 
 // Receiving — real DB types

@@ -5,18 +5,22 @@ import { Package, AlertTriangle, MapPin, Search, Layers } from 'lucide-react';
 import { InventoryDisplay, ClientDisplay } from '@/types';
 import { adjustInventoryQuantity } from '@/lib/supabase/queries';
 import ProductImage from '@/components/ui/ProductImage';
+import Pagination, { usePagination } from '@/components/ui/Pagination';
+import { useLowStock } from '@/lib/LowStockContext';
 
 interface InventoryViewProps {
   inventory: InventoryDisplay[];
   setInventory: React.Dispatch<React.SetStateAction<InventoryDisplay[]>>;
   clients: ClientDisplay[];
   onNavigate: (view: string) => void;
+  canAdjust?: boolean;
 }
 
-export default function InventoryView({ inventory, setInventory, clients, onNavigate }: InventoryViewProps) {
+export default function InventoryView({ inventory, setInventory, clients, onNavigate, canAdjust = true }: InventoryViewProps) {
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
   const [showLowStock, setShowLowStock] = useState(false);
+  const { refreshLowStock } = useLowStock();
   const [groupBySize, setGroupBySize] = useState(false);
 
   const filteredInventory = inventory.filter(item => {
@@ -27,6 +31,8 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
     const matchesLowStock = !showLowStock || item.quantity <= (item.threshold ?? 0);
     return matchesSearch && matchesClient && matchesLowStock;
   });
+
+  const { paginatedItems: paginatedInventory, currentPage, totalPages, totalItems, pageSize, setCurrentPage } = usePagination(filteredInventory, 10);
 
   const lowStockCount = inventory.filter(i => i.quantity <= (i.threshold ?? 0)).length;
 
@@ -43,6 +49,7 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
 
     try {
       await adjustInventoryQuantity(itemId, delta, item.quantity);
+      refreshLowStock();
     } catch {
       // Revert on error
       setInventory(prev => prev.map(i =>
@@ -52,25 +59,27 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Inventory Tracker</h2>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onNavigate('receiving')}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
-          >
-            <Package className="w-4 h-4" />
-            Receive Inventory
-          </button>
-        </div>
+    <div className="p-4 sm:p-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Inventory Tracker</h2>
+        {canAdjust && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onNavigate('receiving')}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
+            >
+              <Package className="w-4 h-4" />
+              Receive Inventory
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Low Stock Alert */}
       {lowStockCount > 0 && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-amber-100 rounded-lg">
-            <AlertTriangle className="w-6 h-6 text-amber-600" />
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          <div className="p-2 sm:p-3 bg-amber-100 rounded-lg">
+            <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-amber-800">Low Stock Alert</h3>
@@ -78,7 +87,7 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
           </div>
           <button
             onClick={() => setShowLowStock(!showLowStock)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
               showLowStock ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
             }`}
           >
@@ -88,8 +97,8 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="relative flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
@@ -99,25 +108,28 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
             className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <select
-          value={clientFilter}
-          onChange={e => setClientFilter(e.target.value)}
-          className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="all">All Clients</option>
-          {clients.map(client => (
-            <option key={client.id} value={client.id}>{client.name}</option>
-          ))}
-        </select>
-        <button
-          onClick={() => setGroupBySize(!groupBySize)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            groupBySize ? 'bg-blue-500 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          Group by Size
-        </button>
+        <div className="flex gap-3">
+          <select
+            value={clientFilter}
+            onChange={e => setClientFilter(e.target.value)}
+            className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Clients</option>
+            {clients.map(client => (
+              <option key={client.id} value={client.id}>{client.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setGroupBySize(!groupBySize)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+              groupBySize ? 'bg-blue-500 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span className="hidden sm:inline">Group by Size</span>
+            <span className="sm:hidden">Group</span>
+          </button>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -133,7 +145,7 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
       {groupBySize ? (
         (() => {
           const groups: Record<string, InventoryDisplay[]> = {};
-          filteredInventory.forEach(item => {
+          paginatedInventory.forEach(item => {
             const baseName = item.product_name;
             if (!groups[baseName]) groups[baseName] = [];
             groups[baseName].push(item);
@@ -182,10 +194,12 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
                             {item.quantity}
                             <span className="text-xs font-normal text-slate-400 ml-1">/ {item.threshold ?? 0}</span>
                           </div>
+                          {canAdjust && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => handleAdjustQuantity(item.id, -1)} className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-200 rounded text-slate-600 font-bold text-sm transition-colors">-</button>
                             <button onClick={() => handleAdjustQuantity(item.id, 1)} className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-200 rounded text-slate-600 font-bold text-sm transition-colors">+</button>
                           </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -197,7 +211,7 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
         })()
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredInventory.map(item => (
+          {paginatedInventory.map(item => (
             <div
               key={item.id}
               className={`bg-white rounded-xl border p-4 ${
@@ -239,6 +253,7 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
                     Threshold: {item.threshold ?? 0}
                   </div>
                 </div>
+                {canAdjust && (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleAdjustQuantity(item.id, -1)}
@@ -253,11 +268,20 @@ export default function InventoryView({ inventory, setInventory, clients, onNavi
                     +
                   </button>
                 </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={totalItems}
+        pageSize={pageSize}
+      />
     </div>
   );
 }

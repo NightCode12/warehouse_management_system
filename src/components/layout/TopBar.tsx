@@ -16,8 +16,8 @@ export default function TopBar({ title, onRefresh }: TopBarProps) {
   }, [])
 
   return (
-    <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-      <h1 className="text-xl font-bold text-slate-800">{title}</h1>
+    <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+      <h1 className="text-lg sm:text-xl font-bold text-slate-800">{title}</h1>
       <div className="flex items-center gap-3">
         {onRefresh && (
           <button
@@ -28,7 +28,7 @@ export default function TopBar({ title, onRefresh }: TopBarProps) {
           </button>
         )}
         {stores.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2">
             {stores.slice(0, 3).map(store => (
               <div
                 key={store.id}

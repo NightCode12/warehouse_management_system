@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Package, Truck, AlertTriangle, Clock, Box, ChevronRight } from 'lucide-react';
+import { Package, PackageCheck, Truck, AlertTriangle, Clock, Box, ChevronRight } from 'lucide-react';
 import { PickableOrder } from '@/types';
 
 interface StoreInfo {
@@ -29,6 +29,7 @@ export default function OperationsDashboard({ orders, stores }: OperationsDashbo
     total: orders.length,
     pending: orders.filter(o => o.status === 'pending').length,
     picking: orders.filter(o => o.status === 'picking').length,
+    picked: orders.filter(o => o.status === 'picked').length,
     packed: orders.filter(o => o.status === 'packed').length,
     shipped: orders.filter(o => o.status === 'shipped').length,
     rush: orders.filter(o => o.priority === 'rush' || o.priority === 'same-day').length,
@@ -75,7 +76,7 @@ export default function OperationsDashboard({ orders, stores }: OperationsDashbo
       </div>
 
       {/* Main Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-5 gap-4 mb-4">
         <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-4 border border-slate-700">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-amber-500/20 rounded-xl">
@@ -94,6 +95,16 @@ export default function OperationsDashboard({ orders, stores }: OperationsDashbo
             <span className="text-slate-400 font-medium text-sm">PICKING</span>
           </div>
           <div className="text-4xl font-black text-blue-400">{stats.picking}</div>
+        </div>
+
+        <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-4 border border-slate-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-teal-500/20 rounded-xl">
+              <PackageCheck className="w-5 h-5 text-teal-400" />
+            </div>
+            <span className="text-slate-400 font-medium text-sm">PICKED</span>
+          </div>
+          <div className="text-4xl font-black text-teal-400">{stats.picked}</div>
         </div>
 
         <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-4 border border-slate-700">
