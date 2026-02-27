@@ -144,13 +144,26 @@ export async function lookupBarcodeAlias(barcode: string) {
 }
 
 // Save a new barcode → SKU mapping so the system remembers it
-export async function saveBarcodeAlias(externalBarcode: string, sku: string, inventoryId?: string) {
+export async function saveBarcodeAlias(externalBarcode: string, sku: string, inventoryId?: string, createdBy?: string) {
+  // If no inventoryId provided, look it up by SKU
+  let resolvedInventoryId = inventoryId || null;
+  if (!resolvedInventoryId) {
+    const { data: inv } = await supabase
+      .from('inventory')
+      .select('id')
+      .eq('sku', sku)
+      .limit(1)
+      .single();
+    if (inv) resolvedInventoryId = inv.id;
+  }
+
   const { data, error } = await supabase
     .from('barcode_aliases')
     .insert({
       external_barcode: externalBarcode,
       sku,
-      inventory_id: inventoryId || null,
+      inventory_id: resolvedInventoryId,
+      created_by: createdBy || null,
     })
     .select()
     .single()
@@ -345,6 +358,8 @@ export async function getOrdersWithDetails() {
     created_at: order.created_at || '',
     in_hands_date: order.in_hands_date || null,
     item_count: order.order_items?.length || 0,
+    tracking_number: order.tracking_number || null,
+    tracking_company: (order as any).tracking_company || null,
   }))
 
   return displayOrders
@@ -429,6 +444,69 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus) {
     throw error
   }
   return data
+}
+
+// ─── Ship Order (with optional Shopify fulfillment) ─────────
+
+export async function shipOrder(
+  orderId: string,
+  trackingNumber?: string,
+  trackingCompany?: string
+): Promise<{ success: boolean; shopifySynced: boolean }> {
+  // Look up the order to check if it's a Shopify order
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, source, shopify_order_id')
+    .eq('id', orderId)
+    .maybeSingle()
+
+  let shopifySynced = false
+
+  // Try Shopify fulfillment for Shopify orders
+  if (order?.source === 'shopify' && order.shopify_order_id) {
+    try {
+      const res = await fetch('/api/shopify/fulfillments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          trackingNumber: trackingNumber || undefined,
+          trackingCompany: trackingCompany || undefined,
+        }),
+      })
+
+      if (res.ok) {
+        shopifySynced = true
+        // The API route already updates the orders table, so we're done
+        return { success: true, shopifySynced: true }
+      }
+
+      // If Shopify sync fails (e.g. no token), fall through to local-only update
+      const body = await res.json().catch(() => ({}))
+      console.warn('Shopify fulfillment failed, updating locally:', body.error)
+    } catch (err) {
+      console.warn('Shopify fulfillment request failed, updating locally:', err)
+    }
+  }
+
+  // Local-only update (non-Shopify orders or Shopify fallback)
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'shipped',
+      shipped_at: new Date().toISOString(),
+      tracking_number: trackingNumber || null,
+      tracking_company: trackingCompany || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+
+  if (error) {
+    console.error('Error shipping order:', error)
+    throw error
+  }
+
+  return { success: true, shopifySynced }
 }
 
 // ─── Stock Lookup by SKU ─────────────────────────────────────

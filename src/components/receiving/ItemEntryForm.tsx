@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ScanLine, Plus, MapPin, AlertCircle, CheckCircle, Camera } from 'lucide-react';
+import { ScanLine, Plus, MapPin, AlertCircle, CheckCircle, Camera, Bluetooth, Keyboard, Smartphone } from 'lucide-react';
 import { InventoryDisplay, ClientDisplay } from '@/types';
 import { getAllBarcodeAliases } from '@/lib/supabase/queries';
+import { supabase } from '@/lib/supabase/client';
 import BarcodeScanner from './BarcodeScanner';
 
 interface ItemEntryFormProps {
@@ -33,8 +34,13 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
   const [barcodeSearched, setBarcodeSearched] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [barcodeAliases, setBarcodeAliases] = useState<Map<string, string>>(new Map());
+  const [scanMode, setScanMode] = useState<'bluetooth' | 'camera' | 'manual'>('bluetooth');
+  const [bluetoothInput, setBluetoothInput] = useState('');
+  const [phoneConnected, setPhoneConnected] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const bluetoothRef = useRef<HTMLInputElement>(null);
+  const resolveBarcodeRef = useRef<(value: string) => void>(() => {});
 
   // Load barcode aliases from Supabase on mount
   useEffect(() => {
@@ -47,6 +53,54 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
       setBarcodeAliases(map);
     });
   }, []);
+
+  // Keep Bluetooth input focused so HID scanner can type into it
+  useEffect(() => {
+    if (scanMode !== 'bluetooth') return;
+    const interval = setInterval(() => {
+      if (bluetoothRef.current && document.activeElement !== bluetoothRef.current) {
+        bluetoothRef.current.focus();
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [scanMode]);
+
+  // Listen for remote scans from the mobile scanner page via Supabase Realtime
+  useEffect(() => {
+    const channel = supabase.channel('wms-scanner', {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'barcode-scanned' }, (payload) => {
+        const barcode = payload.payload?.barcode as string;
+        if (!barcode) return;
+
+        // Parse SKU|LOCATION|VARIANT format
+        let sku = barcode;
+        if (barcode.includes('|')) {
+          const parts = barcode.split('|');
+          sku = parts[0];
+          if (parts[1] && LOCATION_REGEX.test(parts[1].toUpperCase())) {
+            setLocation(parts[1].toUpperCase());
+            setLocationError('');
+          }
+          if (parts[2]) {
+            setManualVariant(parts[2]);
+          }
+        }
+
+        setBarcode(sku);
+        resolveBarcodeRef.current(sku);
+      })
+      .subscribe((status) => {
+        setPhoneConnected(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveBarcode = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -83,6 +137,9 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
     setResolvedItem(null);
     setIsNewItem(true);
   }, [inventory, barcodeAliases]);
+
+  // Keep ref in sync so Realtime listener uses latest resolve logic
+  resolveBarcodeRef.current = resolveBarcode;
 
   const validateLocation = (value: string) => {
     const upper = value.toUpperCase();
@@ -134,6 +191,30 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
     }
   };
 
+  const handleBluetoothScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = bluetoothInput.trim();
+    if (!value) return;
+
+    // Parse SKU|LOCATION|VARIANT format from QR codes
+    let sku = value;
+    if (value.includes('|')) {
+      const parts = value.split('|');
+      sku = parts[0];
+      if (parts[1] && LOCATION_REGEX.test(parts[1].toUpperCase())) {
+        setLocation(parts[1].toUpperCase());
+        setLocationError('');
+      }
+      if (parts[2]) {
+        setManualVariant(parts[2]);
+      }
+    }
+
+    setBarcode(sku);
+    resolveBarcode(sku);
+    setBluetoothInput('');
+  };
+
   const handleCameraScan = useCallback((value: string) => {
     setScannerOpen(false);
 
@@ -162,52 +243,132 @@ export default function ItemEntryForm({ inventory, client, onAddItem }: ItemEntr
           className="w-3 h-3 rounded-full"
           style={{ backgroundColor: client.color || '#999' }}
         />
-        <span className="font-semibold text-slate-800 text-sm">{client.name}</span>
+        <span className="font-semibold text-slate-800 text-sm flex-1">{client.name}</span>
+        {phoneConnected && (
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full">
+            <Smartphone className="w-3 h-3 text-emerald-500" />
+            <span className="text-[10px] font-semibold text-emerald-600">Phone</span>
+          </div>
+        )}
       </div>
 
-      {/* Barcode / SKU Input */}
-      <div className="mb-4">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">
-          Scan / Enter Barcode or SKU
-        </label>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              ref={barcodeRef}
-              type="text"
-              value={barcode}
-              onChange={e => {
-                setBarcode(e.target.value);
-                setBarcodeSearched(false);
-                setResolvedItem(null);
-                setIsNewItem(false);
-              }}
-              onBlur={() => resolveBarcode(barcode)}
-              onKeyDown={handleBarcodeKeyDown}
-              placeholder="Scan barcode or type SKU..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-              autoFocus
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setScannerOpen(true)}
-            className="flex items-center justify-center w-11 h-11 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors shrink-0"
-            title="Scan with camera"
-          >
-            <Camera className="w-5 h-5" />
-          </button>
-        </div>
+      {/* Scan Mode Toggle */}
+      <div className="flex items-center gap-1 mb-3 bg-slate-100 rounded-lg p-0.5">
+        <button
+          type="button"
+          onClick={() => setScanMode('bluetooth')}
+          className={`flex items-center gap-1.5 flex-1 justify-center px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+            scanMode === 'bluetooth' ? 'bg-blue-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Bluetooth className="w-3.5 h-3.5" />
+          Bluetooth
+        </button>
+        <button
+          type="button"
+          onClick={() => setScanMode('camera')}
+          className={`flex items-center gap-1.5 flex-1 justify-center px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+            scanMode === 'camera' ? 'bg-blue-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Camera className="w-3.5 h-3.5" />
+          Camera
+        </button>
+        <button
+          type="button"
+          onClick={() => setScanMode('manual')}
+          className={`flex items-center gap-1.5 flex-1 justify-center px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+            scanMode === 'manual' ? 'bg-blue-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Keyboard className="w-3.5 h-3.5" />
+          Manual
+        </button>
+      </div>
 
-        {scannerOpen && (
-          <BarcodeScanner
-            onScan={handleCameraScan}
-            onClose={() => setScannerOpen(false)}
-          />
+      {/* Barcode / SKU Input — varies by mode */}
+      <div className="mb-4">
+        {scanMode === 'bluetooth' ? (
+          <>
+            {/* Bluetooth HID scanner — hidden focused input */}
+            <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+              <div
+                className="w-10 h-10 rounded-full bg-blue-100 border-2 border-blue-300 flex items-center justify-center shrink-0"
+                style={{ animation: !barcodeSearched ? 'pulse 2s ease-in-out infinite' : undefined }}
+              >
+                <ScanLine className="w-5 h-5 text-blue-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-blue-700">
+                  {barcodeSearched ? `Scanned: ${barcode}` : 'Ready to Scan'}
+                </p>
+                <p className="text-xs text-blue-500 mt-0.5">
+                  Point your Bluetooth scanner at the barcode
+                </p>
+              </div>
+            </div>
+            <form onSubmit={handleBluetoothScan}>
+              <input
+                ref={bluetoothRef}
+                type="text"
+                value={bluetoothInput}
+                onChange={(e) => setBluetoothInput(e.target.value)}
+                autoFocus
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white text-center"
+                placeholder="Waiting for scanner input..."
+              />
+            </form>
+            <p className="text-center text-[10px] text-slate-400 mt-1">
+              Works with Eyoyo, Tera, Inateck &amp; any Bluetooth HID scanner
+            </p>
+          </>
+        ) : scanMode === 'camera' ? (
+          <>
+            {/* Camera mode — open scanner button */}
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-lg text-emerald-700 font-medium text-sm hover:bg-emerald-100 transition-colors mb-2"
+            >
+              <Camera className="w-5 h-5" />
+              {barcodeSearched ? `Scanned: ${barcode}` : 'Tap to Open Camera Scanner'}
+            </button>
+            {scannerOpen && (
+              <BarcodeScanner
+                onScan={handleCameraScan}
+                onClose={() => setScannerOpen(false)}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {/* Manual mode — visible text input */}
+            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">
+              Scan / Enter Barcode or SKU
+            </label>
+            <div className="relative">
+              <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                ref={barcodeRef}
+                type="text"
+                value={barcode}
+                onChange={e => {
+                  setBarcode(e.target.value);
+                  setBarcodeSearched(false);
+                  setResolvedItem(null);
+                  setIsNewItem(false);
+                }}
+                onBlur={() => resolveBarcode(barcode)}
+                onKeyDown={handleBarcodeKeyDown}
+                placeholder="Scan barcode or type SKU..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                autoFocus
+              />
+            </div>
+          </>
         )}
 
-        {/* Resolution feedback */}
+        {/* Resolution feedback — shared across all modes */}
         {barcodeSearched && resolvedItem && (
           <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
             <div className="flex items-center gap-2 mb-1">

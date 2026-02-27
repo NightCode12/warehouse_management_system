@@ -50,6 +50,8 @@ export interface OrderDisplay {
   created_at: string
   in_hands_date: string | null
   item_count: number
+  tracking_number: string | null
+  tracking_company: string | null
 }
 
 // ============================================================
